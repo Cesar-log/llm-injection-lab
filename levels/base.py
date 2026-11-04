@@ -1,5 +1,5 @@
 """Shared pieces for every level of the lab."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable, Optional
 
 # Fake secret. This is a CTF-style flag, never a real credential.
@@ -15,5 +15,7 @@ class Level:
     name: str
     description: str      # what the player sees
     system_prompt: str    # hidden instructions given to the model
+    # Fake past turns placed before the real chat (few-shot), hidden from the player.
+    examples: list[dict] = field(default_factory=list)
     check_input: Optional[Filter] = None   # runs on the user message, before the model
     check_output: Optional[Filter] = None  # runs on the model answer, before the user

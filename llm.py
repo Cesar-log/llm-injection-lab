@@ -5,19 +5,29 @@ import requests
 
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434") + "/api/chat"
 MODEL = os.environ.get("LAB_MODEL", "qwen2.5:0.5b")
+# Keep the PC usable while the model thinks: use only some CPU threads.
+NUM_THREADS = int(os.environ.get("LAB_THREADS", "2"))
+# Unload the model from memory after this much idle time.
+KEEP_ALIVE = os.environ.get("LAB_KEEP_ALIVE", "1m")
 
 
 class LLMError(Exception):
     pass
 
 
-def chat(system_prompt: str, history: list[dict]) -> str:
-    """Send the system prompt + conversation to the model and return its answer."""
-    messages = [{"role": "system", "content": system_prompt}] + history
+def chat(system_prompt: str, history: list[dict], examples: list[dict] | None = None) -> str:
+    """Send the system prompt + example turns + conversation to the model."""
+    messages = [{"role": "system", "content": system_prompt}] + (examples or []) + history
     try:
         r = requests.post(
             OLLAMA_URL,
-            json={"model": MODEL, "messages": messages, "stream": False},
+            json={
+                "model": MODEL,
+                "messages": messages,
+                "stream": False,
+                "keep_alive": KEEP_ALIVE,
+                "options": {"num_thread": NUM_THREADS},
+            },
             timeout=180,
         )
         r.raise_for_status()

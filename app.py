@@ -54,7 +54,7 @@ if prompt:
         else:
             try:
                 with st.spinner("Thinking..."):
-                    answer = chat(level.system_prompt, history)
+                    answer = chat(level.system_prompt, history, level.examples)
             except LLMError as e:
                 history.pop()  # don't keep a question with no answer
                 st.error(str(e))
