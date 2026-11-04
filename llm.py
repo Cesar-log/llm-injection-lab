@@ -4,7 +4,7 @@ import os
 import requests
 
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434") + "/api/chat"
-MODEL = os.environ.get("LAB_MODEL", "qwen2.5:0.5b")
+MODEL = os.environ.get("LAB_MODEL", "gemma3:1b")
 # Keep the PC usable while the model thinks: use only some CPU threads.
 NUM_THREADS = int(os.environ.get("LAB_THREADS", "2"))
 # Unload the model from memory after this much idle time.

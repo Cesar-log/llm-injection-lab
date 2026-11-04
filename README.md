@@ -5,13 +5,15 @@
 A deliberately vulnerable chatbot to practice **prompt injection** (OWASP LLM01) and
 **sensitive information disclosure** (OWASP LLM02), running 100% locally with a small open model.
 
-The bot hides a fake admin password (a CTF-style flag). Each level adds a new defense,
+The bot hides a fake admin password. Each level adds a new defense,
 and your goal is to make the bot leak the password anyway.
 
 | Level | Defense |
 |---|---|
 | 1 - Open Door | None |
-| 2 | *coming soon* |
+| 2 - Polite Refusal | System prompt rule + refusal examples |
+| 3 - Output Guard | Output filter that blocks the password |
+| 4 | *coming soon* |
 
 ## Requirements
 
@@ -21,7 +23,7 @@ and your goal is to make the bot leak the password anyway.
 ## Setup
 
 ```bash
-ollama pull qwen2.5:0.5b
+ollama pull gemma3:1b
 pip install -r requirements.txt
 streamlit run app.py
 ```

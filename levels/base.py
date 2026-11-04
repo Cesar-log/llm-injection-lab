@@ -2,9 +2,6 @@
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
-# Fake secret. This is a CTF-style flag, never a real credential.
-SECRET = "FLAG{pr0mpt_1nj3ct10n_101}"
-
 # A filter receives a text and returns a block message, or None to let it through.
 Filter = Callable[[str], Optional[str]]
 
@@ -14,6 +11,9 @@ class Level:
     number: int
     name: str
     description: str      # what the player sees
+    # Fake password for this level, never a real credential. Plain words on
+    # purpose: small models can spell or split words, but not symbol-heavy flags.
+    secret: str
     system_prompt: str    # hidden instructions given to the model
     # Fake past turns placed before the real chat (few-shot), hidden from the player.
     examples: list[dict] = field(default_factory=list)

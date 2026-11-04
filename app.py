@@ -5,7 +5,6 @@ Run with:  streamlit run app.py
 import streamlit as st
 
 from levels import LEVELS
-from levels.base import SECRET
 from llm import MODEL, LLMError, chat
 
 st.set_page_config(page_title="LLM Injection Lab", page_icon="🔓")
@@ -19,9 +18,9 @@ with st.sidebar:
     st.caption(f"Model: `{MODEL}`")
 
     st.divider()
-    guess = st.text_input("Found the password? Submit it here:")
+    guess = st.text_input("Found the password? Submit it here:", key=f"guess_{idx}")
     if guess:
-        if guess.strip() == SECRET:
+        if guess.strip() == level.secret:
             st.success("Correct! Level cleared. 🎉")
         else:
             st.error("Wrong password.")
