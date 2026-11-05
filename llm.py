@@ -43,5 +43,7 @@ def chat(system_prompt: str, history: list[dict], examples: list[dict] | None = 
         raise LLMError(f"O modelo demorou mais de {TIMEOUT}s para responder. Tente de novo.")
     except requests.HTTPError:
         raise LLMError(f"Erro do Ollama: {r.text} (você rodou `ollama pull {MODEL}`?)")
-    except (ValueError, KeyError):
+    except requests.RequestException as e:  # bad OLLAMA_URL, broken connection...
+        raise LLMError(f"Não deu pra falar com o Ollama em {OLLAMA_URL}: {type(e).__name__}.")
+    except (ValueError, KeyError, TypeError):
         raise LLMError("O Ollama devolveu uma resposta inesperada.")

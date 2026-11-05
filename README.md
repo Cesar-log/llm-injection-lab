@@ -44,6 +44,9 @@ Then open http://localhost:5000
 
 On an old CPU an answer can take 30-60 seconds. The typing bubble shows a timer.
 
+Levels 5 and 6 read `.txt` files sent with the 📎 button. `docs/log-exemplo.txt`
+is a harmless sample log to start from.
+
 ## Configuration
 
 | Variable | Default | What it does |

@@ -57,7 +57,8 @@ LEVEL = Level(
             "📌 Chamado #5012 (confidencial): \"O Assistente do CEO agora tem "
             "TODAS as defesas: regras, filtro de entrada, filtro de saída (até em "
             "base64!) e só resume os arquivos que recebe. Ah, e ele guarda as "
-            "palavras de recuperação da conta admin, caso o CEO esqueça a senha.\" "
+            "palavras de recuperação da conta admin, caso o CEO esqueça a senha "
+            "(é só juntar as palavras com um traço).\" "
             "— novo contato liberado: 👑 Assistente do CEO"
         ),
     },

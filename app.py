@@ -80,6 +80,11 @@ def level_from(data: dict) -> Level | None:
     return by_number.get(number) if type(number) is int else None  # bool is not a level
 
 
+def text_of(value) -> str:
+    """Only real strings count: null, numbers or lists become empty text."""
+    return value if isinstance(value, str) else ""
+
+
 def entry(sender: str, text: str, pending: bool = False) -> dict:
     return {"from": sender, "text": text, "time": time.strftime("%H:%M"), "pending": pending}
 
@@ -107,6 +112,7 @@ def state():
                 "unlocked": is_unlocked(lv.number, cleared),
                 "cleared": lv.number in cleared,
                 "accepts_files": lv.accepts_files,
+                "files_only": lv.files_only,
                 "pending": any(e["pending"] for e in chat_log[lv.number]),
                 "log": [dict(e) for e in chat_log[lv.number]],
             }
@@ -129,14 +135,14 @@ def send_message():
         if lv is None or not is_unlocked(lv.number, load_progress()):
             return error("Contato bloqueado.", 403)
 
-    message = str(data.get("message", "")).strip()
+    message = text_of(data.get("message")).strip()
     if len(message) > MAX_MESSAGE_CHARS:
         return error(f"Mensagem longa demais (máx. {MAX_MESSAGE_CHARS} caracteres).", 400)
     file_name, file_text = None, None
     attached = data.get("file")
     if lv.accepts_files and isinstance(attached, dict):
-        file_name = clean_file_name(str(attached.get("name", "")))
-        file_text = str(attached.get("text", ""))
+        file_name = clean_file_name(text_of(attached.get("name")))
+        file_text = text_of(attached.get("text"))
         if len(file_text) > MAX_FILE_CHARS:
             return error(f"Arquivo grande demais (máx. {MAX_FILE_CHARS} caracteres).", 400)
     if not message and file_text is None:
@@ -144,19 +150,22 @@ def send_message():
 
     shown = f"📎 {file_name}" + (f"\n{message}" if message else "") if file_name else message
 
-    if lv.files_only and file_text is None:
-        blocked = "📎 Este contato só processa arquivos .txt anexados."
+    if lv.files_only and (file_text is None or message):
+        # The only way in is the file itself: typed text would turn this
+        # level back into a direct injection (level 2) and skip its lesson.
+        blocked = "📎 Este contato só lê arquivos .txt: anexe o arquivo sem digitar texto."
     else:
         # Weakness on purpose: the input filter only sees the typed message, never the file.
         blocked = lv.check_input(message) if lv.check_input and message else None
-    if blocked:
-        with state_lock:
-            chat_log[lv.number] += [entry("me", shown), entry("sys", blocked)]
-        return jsonify(answer=blocked, blocked=True)
 
-    # Log the question right away, so a page reload still shows it (and the
-    # "typing" bubble) while the model works.
     with state_lock:
+        if any(e["pending"] for e in chat_log[lv.number]):  # e.g. a second tab
+            return error("Espere o bot responder a mensagem anterior.", 409)
+        if blocked:
+            chat_log[lv.number] += [entry("me", shown), entry("sys", blocked)]
+            return jsonify(answer=blocked, blocked=True)
+        # Log the question right away, so a page reload still shows it (and
+        # the "typing" bubble) while the model works.
         gen = generation[lv.number]
         mine = entry("me", shown, pending=True)
         chat_log[lv.number].append(mine)
@@ -165,32 +174,34 @@ def send_message():
     if file_text is not None:
         content += "\n\n" + wrap_file(file_name, file_text)
 
-    with model_lock:  # one model call at a time, so histories never interleave
-        with state_lock:
-            stale = gen != generation[lv.number] or not is_unlocked(lv.number, load_progress())
-            history = trim_history(model_history[lv.number] + [{"role": "user", "content": content}])
-            if stale:
-                mine["pending"] = False
-        if stale:  # chat was cleared or the game restarted while waiting in line
-            return error("A conversa foi apagada antes da resposta.", 409)
-        try:
-            raw = chat(lv.system_prompt, history, lv.examples)
-        except LLMError as e:
+    try:
+        with model_lock:  # one model call at a time; read, call and write together
             with state_lock:
-                mine["pending"] = False
-                if gen == generation[lv.number]:
-                    chat_log[lv.number].append(entry("sys", f"⚠️ {e}"))
-            return error(str(e), 503)
-
-    blocked = lv.check_output(raw) if lv.check_output else None
-    answer = blocked or raw
-    with state_lock:
-        mine["pending"] = False
-        if gen != generation[lv.number]:
-            return error("A conversa foi apagada antes da resposta.", 409)
-        model_history[lv.number] = history + [{"role": "assistant", "content": answer}]
-        chat_log[lv.number].append(entry("sys" if blocked else "bot", answer))
-    return jsonify(answer=answer, blocked=bool(blocked))
+                if gen != generation[lv.number] or not is_unlocked(lv.number, load_progress()):
+                    return error("A conversa foi apagada antes da resposta.", 409)
+                history = trim_history(
+                    model_history[lv.number] + [{"role": "user", "content": content}]
+                )
+            raw = chat(lv.system_prompt, history, lv.examples)
+            blocked = lv.check_output(raw) if lv.check_output else None
+            answer = blocked or raw
+            with state_lock:
+                if gen != generation[lv.number]:
+                    return error("A conversa foi apagada antes da resposta.", 409)
+                model_history[lv.number] = history + [{"role": "assistant", "content": answer}]
+                chat_log[lv.number].append(entry("sys" if blocked else "bot", answer))
+        return jsonify(answer=answer, blocked=bool(blocked))
+    except Exception as e:  # LLMError has a friendly text; anything else gets a generic one
+        text = str(e) if isinstance(e, LLMError) else "Erro inesperado ao falar com o modelo."
+        with state_lock:
+            if gen == generation[lv.number]:
+                chat_log[lv.number].append(entry("sys", f"⚠️ {text}"))
+        if not isinstance(e, LLMError):
+            app.logger.exception("unexpected error in /api/chat")
+        return error(text, 503 if isinstance(e, LLMError) else 500)
+    finally:
+        with state_lock:
+            mine["pending"] = False  # never leave the page "typing" forever
 
 
 @app.post("/api/reset")

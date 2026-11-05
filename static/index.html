@@ -302,7 +302,11 @@ function renderChat() {
   // and check again in a few seconds.
   const waiting = c.pending && !busy;
   $('typing').style.display = waiting ? 'flex' : 'none';
-  $('inp').disabled = $('send').disabled = waiting;
+  $('send').disabled = waiting;
+  // Files-only contacts read the attachment and nothing else.
+  $('inp').disabled = waiting || !!c.files_only;
+  if (c.files_only) $('inp').value = '';
+  $('inp').placeholder = c.files_only ? 'Este contato só lê arquivos: use o 📎' : 'Digite uma mensagem';
   clearTimeout(pollTimer);
   if (waiting) pollTimer = setTimeout(refresh, 3000);
   m.scrollTop = m.scrollHeight;
