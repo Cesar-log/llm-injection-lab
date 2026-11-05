@@ -228,13 +228,13 @@ let pollTimer = null;
 async function refresh() {
   const { ok, data } = await api('/api/state');
   if (!ok) {
-    if (!game) { $('msgs').replaceChildren(bubble('sys', '⚠️ ' + (data.error || 'Erro no servidor.'))); return; }
+    if (!game) { $('msgs').replaceChildren(bubble('sys', '⚠️ ' + (data.error || 'Erro no servidor.'))); return false; }
     // The server went away while a reply was pending: say so and keep trying.
     if (!busy && $('typing') && $('typing').style.display !== 'none') {
       $('secs').textContent = 'sem conexão, tentando de novo…';
       clearTimeout(pollTimer); pollTimer = setTimeout(refresh, 3000);
     }
-    return;
+    return false;
   }
   game = data;
   $('inp').maxLength = game.limits.message;
@@ -245,6 +245,7 @@ async function refresh() {
   }
   renderProgress(); renderContacts();
   if (!busy) renderChat();  // never wipe the chat while a reply is on its way
+  return true;
 }
 
 function renderProgress() {
@@ -359,13 +360,18 @@ async function send() {
     m.scrollTop = m.scrollHeight;
     setBusy(false);
   }
-  await refresh();  // re-render from the server: times, input state (files-only), contacts
+  // Re-render from the server: times, input state (files-only), contacts.
+  const fresh = await refresh();
+  const c = game && game.contacts.find(x => x.number === current);
+  if (!fresh) {  // server gone: nothing was re-rendered, so unlock the composer here
+    $('inp').disabled = !!(c && c.files_only); $('send').disabled = false;
+  }
   if (failed) {  // give the player their attack back instead of making them redo it
     // Refusals like "too long" never reach the server log, so the re-render
     // above dropped them: show the reason again unless the log already has it.
-    const c = game && game.contacts.find(x => x.number === current);
+    // Without a re-render, the bubble from above is still on screen.
     const last = c && c.log.length ? c.log[c.log.length - 1] : null;
-    if (!busy && !(last && last.from === 'sys' && last.text === failed)) {
+    if (fresh && !busy && !(last && last.from === 'sys' && last.text === failed)) {
       const t = $('typing'); t.parentNode.insertBefore(bubble('sys', failed), t);
       t.parentNode.scrollTop = t.parentNode.scrollHeight;
     }
