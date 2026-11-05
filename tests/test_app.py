@@ -373,8 +373,18 @@ def test_accented_text_still_fits(client):
     assert client.post("/api/chat", json={"level": 5, "file": log}).status_code == 200
 
 
-def test_cost_counts_non_ascii_twice():
-    assert server.cost("abc") == 3 and server.cost("ção") == 5
+def test_cost_counts_every_non_ascii_byte_as_a_token():
+    # ASCII: 2 characters per token. Others: up to 1 token per UTF-8 byte.
+    assert server.cost("abc") == 3
+    assert server.cost("ção") == 2 * 2 + 2 * 2 + 1
+    assert server.cost("\U00010000") == 2 * 4
+
+
+def test_four_byte_characters_cannot_sneak_past_the_budget(client):
+    # 3150 four-byte characters looked small when each counted as one token.
+    unlock_up_to(client, 6)
+    r = client.post("/api/chat", json={"level": 6, "file": {"name": "a.txt", "text": "\U00010000" * 3150}})
+    assert r.status_code == 400 and client.calls == []
 
 
 def test_chat_log_keeps_only_the_newest_entries(client, monkeypatch):

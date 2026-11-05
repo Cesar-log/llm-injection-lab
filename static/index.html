@@ -367,7 +367,8 @@ async function send() {
       const t = $('typing'); t.parentNode.insertBefore(bubble('sys', failed), t);
       t.parentNode.scrollTop = t.parentNode.scrollHeight;
     }
-    if (!$('inp').disabled) $('inp').value = text;
+    // Even while the input waits for another tab's reply: it is re-enabled later.
+    if (!(c && c.files_only)) $('inp').value = text;
     if (file) setFile(file);
   }
   if (!$('inp').disabled) $('inp').focus();
@@ -383,7 +384,9 @@ $('send').onclick = send;
 $('inp').onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) send(); };
 $('clear').onclick = async () => {
   if (busy) return;
-  await api('/api/reset', { level: current }); refresh();
+  const { ok, data } = await api('/api/reset', { level: current });
+  if (!ok) { alert(data.error || 'Erro no servidor. A conversa não foi apagada.'); return; }
+  refresh();
 };
 
 // ---------- portal ----------

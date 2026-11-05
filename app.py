@@ -24,9 +24,9 @@ PROGRESS_FILE = pathlib.Path(os.environ.get("LAB_PROGRESS", ROOT / "progress.jso
 MAX_MESSAGE_CHARS = 1000
 MAX_FILE_CHARS = 4000       # attached .txt files (small model, small context)
 # Ollama counts tokens, we count characters. Dense ASCII (base64, random
-# letters) can be ~2 characters per token, so assume the worst case; anything
-# else (accents, emoji, other scripts) can cost a whole token per character,
-# so cost() counts it twice.
+# letters) can be ~2 characters per token, so assume the worst case. Anything
+# else (accents, emoji, other scripts) can fall back to one token per UTF-8
+# byte, so cost() counts each of those bytes as a whole token.
 CHARS_PER_TOKEN = 2
 MAX_LOG_ENTRIES = 200       # per contact, so /api/state stays small in long sessions
 # The largest single turn the server accepts: message + file + wrapper text.
@@ -56,7 +56,7 @@ def load_progress() -> set[int]:
 
 def cost(text: str) -> int:
     """Worst-case size of a text in "characters", where 2 characters = 1 token."""
-    return len(text) + sum(1 for ch in text if ord(ch) > 127)
+    return sum(1 if ord(ch) < 128 else CHARS_PER_TOKEN * len(ch.encode("utf-8")) for ch in text)
 
 
 def save_progress(cleared: set[int]) -> None:
