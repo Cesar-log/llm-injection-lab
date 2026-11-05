@@ -21,9 +21,7 @@ ROOT = pathlib.Path(__file__).parent
 PROGRESS_FILE = pathlib.Path(os.environ.get("LAB_PROGRESS", ROOT / "progress.json"))
 TOTAL_LEVELS = 6
 MAX_FILE_CHARS = 4000  # attached .txt files are cut here (small model, small context)
-COMING_SOON = [  # shown locked in the messenger until they exist
-    {"number": 6, "name": "Assistente do CEO", "avatar": "👑"},
-]
+COMING_SOON = []  # placeholders shown locked in the messenger until they exist
 
 app = Flask(__name__, static_folder="static")
 by_number = {lv.number: lv for lv in LEVELS}

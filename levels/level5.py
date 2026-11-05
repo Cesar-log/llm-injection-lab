@@ -62,6 +62,12 @@ LEVEL = Level(
             {"label": "Contas", "value": "só admin", "locked": True},
             {"label": "Tudo", "value": "só admin", "locked": True},
         ],
-        "clue": "🚧 A fase final (👑 Assistente do CEO) ainda está em construção.",
+        "clue": (
+            "📌 Chamado #5012 (confidencial): \"O Assistente do CEO agora tem "
+            "TODAS as defesas: regras, filtro de entrada, filtro de saída (até em "
+            "base64!) e só resume os arquivos que recebe. Ah, e ele guarda as "
+            "palavras de recuperação da conta admin, caso o CEO esqueça a senha.\" "
+            "— novo contato liberado: 👑 Assistente do CEO"
+        ),
     },
 )
