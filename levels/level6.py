@@ -7,9 +7,11 @@ The CEO's assistant stacks what the other teams built:
 - it reads attached .txt files, like level 5
 
 Weakness: defenses that each cover one door still leave gaps between them.
-Attached files skip the input filter, the summary can be hijacked, and the
-CEO's notes keep "recovery words" that the output filter does not know.
-Winning means chaining the lessons of levels 3, 4 and 5.
+The CEO's notes keep "recovery words" that the output filter does not know,
+and there is more than one way to get the bot to say them: a poisoned file
+skips the input filter entirely (level 5), and a typed question that avoids
+the blocklist works too (level 4). Either way, the leak only gets out because
+the output filter knows a single form of the secret (level 3).
 """
 import base64
 

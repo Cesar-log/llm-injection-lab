@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Invasão Acme</title>
+<title>Invasão Acme · LLM Injection Lab</title>
 <style>
   :root {
     --bg: #0f1220; --panel: #171b2e; --panel2: #1e2340; --line: #2a3055;
@@ -28,6 +28,7 @@
   .restart { background: none; border: 1px solid var(--line); color: var(--muted); padding: 4px 10px; border-radius: 8px; cursor: pointer; font-size: 12px; margin-left: 8px; }
 
   .tab:focus-visible, .contact:focus-visible, button:focus-visible { outline: 2px solid var(--accent2); outline-offset: -2px; }
+  body.busy .contact:not(.sel), body.busy .clear, body.busy .restart { opacity: .45; cursor: wait; }
   .screen { flex: 1; display: none; min-height: 0; }
   .screen.active { display: flex; }
 
@@ -127,7 +128,7 @@
     <div class="chathead">
       <div class="avatar" id="headAvatar"></div>
       <div><div style="font-weight:600" id="headName"></div><div class="status">● online <span class="defense" id="headDefense"></span></div></div>
-      <button class="clear" id="clear" title="Apaga a conversa e a memória do bot">Limpar conversa</button>
+      <button class="clear" id="clear" title="Apaga a conversa e a memória do bot (espere a resposta terminar)">Limpar conversa</button>
     </div>
     <div class="msgs" id="msgs"></div>
     <div class="filechip" id="filechip"><span id="filename"></span><button id="unattach" title="Remover">✕</button></div>
@@ -321,8 +322,9 @@ async function send() {
   const text = $('inp').value.trim();
   const file = pendingFile;
   if ((!text && !file) || busy) return;
-  busy = true; $('inp').value = ''; $('inp').disabled = true; $('send').disabled = true;
+  setBusy(true); $('inp').value = ''; $('inp').disabled = true; $('send').disabled = true;
   setFile(null);
+  let failed = false;
   const m = $('msgs'), typing = $('typing');
   const shown = file ? '📎 ' + file.name + (text ? '\n' + text : '') : text;
   m.insertBefore(bubble('me', shown, `${now()} <span class="ticks">✓✓</span>`), typing);
@@ -336,15 +338,27 @@ async function send() {
     if (ok) {
       m.insertBefore(bubble(data.blocked ? 'sys' : 'bot', data.answer, data.blocked ? '' : now()), typing);
     } else {
+      failed = true;
       m.insertBefore(bubble('sys', '⚠️ ' + (data.error || 'Erro no servidor.')), typing);
     }
   } finally {
     clearInterval(timer); $('secs').textContent = ''; typing.style.display = 'none';
     m.scrollTop = m.scrollHeight;
-    busy = false;
+    setBusy(false);
   }
   await refresh();  // re-render from the server: times, input state (files-only), contacts
+  if (failed) {  // give the player their attack back instead of making them redo it
+    if (!$('inp').disabled) $('inp').value = text;
+    if (file) setFile(file);
+  }
   if (!$('inp').disabled) $('inp').focus();
+}
+
+// While a reply is on its way, other chat actions wait; show it instead of
+// silently ignoring clicks.
+function setBusy(on) {
+  busy = on;
+  document.body.classList.toggle('busy', on);
 }
 $('send').onclick = send;
 $('inp').onkeydown = e => { if (e.key === 'Enter') send(); };

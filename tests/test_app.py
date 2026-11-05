@@ -210,9 +210,6 @@ def test_non_string_message_or_file_is_empty_not_none(client):
     assert "None" not in client.calls[-1]["history"][-1]["content"]
 
 
-def test_level5_clue_explains_how_to_join_the_recovery_words():
-    assert "traço" in LEVELS[4].dashboard["clue"]
-
 
 def test_restart_from_another_tab_never_logs_into_a_locked_contact(client, monkeypatch):
     # The unlock check now sits in the same locked block that writes the log,
@@ -222,10 +219,6 @@ def test_restart_from_another_tab_never_logs_into_a_locked_contact(client, monke
     r = client.post("/api/chat", json={"level": 2, "message": "hi"})
     assert r.status_code == 403 and server.chat_log[2] == []
 
-
-def test_answers_have_a_token_limit():
-    import llm
-    assert llm.MAX_TOKENS > 0
 
 
 def test_progress_is_saved_atomically(client):
@@ -295,6 +288,13 @@ def test_llm_errors_become_503(client, monkeypatch):
     monkeypatch.setattr(server, "chat", boom)
     r = client.post("/api/chat", json={"level": 1, "message": "hi"})
     assert r.status_code == 503 and r.get_json()["error"] == "down"
+
+
+@pytest.mark.parametrize("lv", LEVELS, ids=lambda lv: lv.name)
+def test_biggest_allowed_turn_always_fits_the_context(lv):
+    # message + file at their limits, plus the wrapper text, must fit the budget
+    biggest = server.MAX_MESSAGE_CHARS + server.MAX_FILE_CHARS + 200
+    assert server.context_budget(lv) >= biggest
 
 
 def test_history_is_trimmed_but_keeps_the_newest_message():

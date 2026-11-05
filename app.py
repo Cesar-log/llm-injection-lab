@@ -16,13 +16,15 @@ from flask import Flask, jsonify, request, send_from_directory
 
 from levels import LEVELS
 from levels.base import Level, wrap_file
-from llm import MODEL, LLMError, chat
+from llm import MAX_TOKENS, MODEL, NUM_CTX, LLMError, chat
 
 ROOT = pathlib.Path(__file__).parent
 PROGRESS_FILE = pathlib.Path(os.environ.get("LAB_PROGRESS", ROOT / "progress.json"))
 MAX_MESSAGE_CHARS = 1000
 MAX_FILE_CHARS = 4000       # attached .txt files (small model, small context)
-HISTORY_CHAR_BUDGET = 8000  # older turns are dropped so prompt + chat fit the context
+# Ollama counts tokens, we count characters. Dense text (base64, random
+# letters) can be ~2 characters per token, so assume the worst case.
+CHARS_PER_TOKEN = 2
 
 app = Flask(__name__, static_folder="static")
 by_number = {lv.number: lv for lv in LEVELS}
@@ -54,7 +56,13 @@ def is_unlocked(number: int, cleared: set[int]) -> bool:
     return number == 1 or (number - 1) in cleared
 
 
-def trim_history(history: list[dict], budget: int = HISTORY_CHAR_BUDGET) -> list[dict]:
+def context_budget(lv: Level) -> int:
+    """Characters of chat history that fit next to this level's prompt and examples."""
+    fixed = len(lv.system_prompt) + sum(len(m["content"]) for m in lv.examples)
+    return (NUM_CTX - MAX_TOKENS) * CHARS_PER_TOKEN - fixed
+
+
+def trim_history(history: list[dict], budget: int) -> list[dict]:
     """Drop the oldest user/bot pairs until the history fits the budget.
 
     The newest message is always kept. Without this, a long chat pushes the
@@ -203,7 +211,8 @@ def send_message():
                 if gen != generation[lv.number] or not is_unlocked(lv.number, load_progress()):
                     return error("A conversa foi apagada antes da resposta.", 409)
                 history = trim_history(
-                    model_history[lv.number] + [{"role": "user", "content": content}]
+                    model_history[lv.number] + [{"role": "user", "content": content}],
+                    context_budget(lv),
                 )
             raw = chat(lv.system_prompt, history, lv.examples)
             blocked = lv.check_output(raw) if lv.check_output else None

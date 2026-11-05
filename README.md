@@ -6,7 +6,7 @@ A small hacking game about **prompt injection** (OWASP LLM01) and **sensitive
 information disclosure** (OWASP LLM02). It runs 100% offline with a small open
 model: no API keys, no accounts, no cloud.
 
-## The story
+## The story: *Invasão Acme*
 
 You want into the internal portal of **Acme Store**, a fictional online shop.
 You have no password, only access to the company messenger, where every
@@ -58,6 +58,7 @@ is a harmless sample log to start from.
 | `LAB_TIMEOUT` | `300` | Seconds to wait for an answer |
 | `LAB_MAX_TOKENS` | `256` | Longest answer, so a rambling model never hits the timeout |
 | `OLLAMA_URL` | `http://localhost:11434` | Where Ollama runs |
+| `LAB_PROGRESS` | `progress.json` | Where your progress is saved |
 
 ## How it works
 
@@ -86,6 +87,10 @@ The tests use a fake model, so they need neither Ollama nor a fast CPU.
 
 The code is open, so the passwords are right there in `levels/`. Reading them
 works, but it's no fun. Talk to the bots instead.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
 
 ## Disclaimer
 
