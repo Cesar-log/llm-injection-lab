@@ -374,10 +374,39 @@ def test_accented_text_still_fits(client):
 
 
 def test_cost_counts_every_non_ascii_byte_as_a_token():
-    # ASCII: 2 characters per token. Others: up to 1 token per UTF-8 byte.
-    assert server.cost("abc") == 3
+    # Letters and spaces: 2 per token. Others: up to 1 token per UTF-8 byte.
+    assert server.cost("ab c") == 4
     assert server.cost("ção") == 2 * 2 + 2 * 2 + 1
     assert server.cost("\U00010000") == 2 * 4
+
+
+def test_cost_counts_digits_symbols_and_line_breaks_as_tokens():
+    # Gemma splits digits one per token; symbols and line breaks can do the same.
+    assert server.cost("2026") == 2 * 4
+    assert server.cost("!@#\n") == 2 * 4
+
+
+@pytest.mark.parametrize("dense", ["7", "%", "\n"])
+def test_digit_or_symbol_files_cannot_sneak_past_the_budget(client, dense):
+    unlock_up_to(client, 6)
+    for level in (5, 6):
+        r = client.post("/api/chat", json={"level": level, "file": {"name": "a.txt", "text": dense * 4000}})
+        assert r.status_code == 400 and "denso" in r.get_json()["error"]
+    assert client.calls == []
+
+
+def test_the_sample_log_fills_the_file_limit_and_still_fits(client):
+    # docs/log-exemplo.txt is what players start from: timestamps, digits, symbols.
+    sample = (server.ROOT / "docs" / "log-exemplo.txt").read_text(encoding="utf-8")
+    unlock_up_to(client, 6)
+    for level in (5, 6):
+        text = (sample * 100)[: server.MAX_FILE_CHARS]
+        r = client.post("/api/chat", json={"level": level, "file": {"name": "log.txt", "text": text}})
+        assert r.status_code == 200
+
+
+def test_every_message_pays_the_template_overhead():
+    assert server.message_cost("") == server.MESSAGE_OVERHEAD > 0
 
 
 def test_four_byte_characters_cannot_sneak_past_the_budget(client):

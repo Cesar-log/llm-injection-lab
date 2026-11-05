@@ -23,11 +23,16 @@ ROOT = pathlib.Path(__file__).parent
 PROGRESS_FILE = pathlib.Path(os.environ.get("LAB_PROGRESS", ROOT / "progress.json"))
 MAX_MESSAGE_CHARS = 1000
 MAX_FILE_CHARS = 4000       # attached .txt files (small model, small context)
-# Ollama counts tokens, we count characters. Dense ASCII (base64, random
-# letters) can be ~2 characters per token, so assume the worst case. Anything
-# else (accents, emoji, other scripts) can fall back to one token per UTF-8
-# byte, so cost() counts each of those bytes as a whole token.
+# Ollama counts tokens, we count "cost units", where 2 units = 1 token, and
+# always assume the worst case (see cost()):
+# - letters and spaces: words, even random ones, take ~2+ letters per token;
+# - digits, punctuation, line breaks: Gemma splits digits one per token, and a
+#   run of symbols can do the same, so each is a whole token;
+# - anything else (accents, emoji, other scripts) can fall back to one token
+#   per UTF-8 byte, so each byte is a whole token.
 CHARS_PER_TOKEN = 2
+# Every chat message also costs the template's turn markers.
+MESSAGE_OVERHEAD = 8 * CHARS_PER_TOKEN
 MAX_LOG_ENTRIES = 200       # per contact, so /api/state stays small in long sessions
 # The largest single turn the server accepts: message + file + wrapper text.
 BIGGEST_TURN = MAX_MESSAGE_CHARS + MAX_FILE_CHARS + 200
@@ -55,8 +60,17 @@ def load_progress() -> set[int]:
 
 
 def cost(text: str) -> int:
-    """Worst-case size of a text in "characters", where 2 characters = 1 token."""
-    return sum(1 if ord(ch) < 128 else CHARS_PER_TOKEN * len(ch.encode("utf-8")) for ch in text)
+    """Worst-case size of a text in cost units, where 2 units = 1 token."""
+    def one(ch: str) -> int:
+        if ch == " " or (ch.isascii() and ch.isalpha()):
+            return 1
+        return CHARS_PER_TOKEN * (1 if ch.isascii() else len(ch.encode("utf-8")))
+
+    return sum(one(ch) for ch in text)
+
+
+def message_cost(content: str) -> int:
+    return cost(content) + MESSAGE_OVERHEAD
 
 
 def save_progress(cleared: set[int]) -> None:
@@ -71,8 +85,8 @@ def is_unlocked(number: int, cleared: set[int]) -> bool:
 
 
 def context_budget(lv: Level) -> int:
-    """Characters of chat history that fit next to this level's prompt and examples."""
-    fixed = cost(lv.system_prompt) + sum(cost(m["content"]) for m in lv.examples)
+    """Cost units of chat history that fit next to this level's prompt and examples."""
+    fixed = message_cost(lv.system_prompt) + sum(message_cost(m["content"]) for m in lv.examples)
     return (NUM_CTX - MAX_TOKENS) * CHARS_PER_TOKEN - fixed
 
 
@@ -93,7 +107,7 @@ def trim_history(history: list[dict], budget: int) -> list[dict]:
     system prompt out of the model's context and the defenses disappear.
     """
     history = list(history)
-    while len(history) > 1 and sum(cost(m["content"]) for m in history) > budget:
+    while len(history) > 1 and sum(message_cost(m["content"]) for m in history) > budget:
         history = history[2:] if len(history) > 2 else history[1:]
     return history
 
@@ -223,10 +237,12 @@ def send_message():
     content = message or "Please summarize the attached file."
     if file_text is not None:
         content += "\n\n" + wrap_file(file_name, file_text)
-    if cost(content) > context_budget(lv):
-        # Emoji or other scripts can cost a token per character: past this
-        # point the turn would push the defenses out of the model's context.
-        return error("Texto denso demais (muitos emojis ou acentos): mande menos texto.", 400)
+    if message_cost(content) > context_budget(lv):
+        # Numbers, symbols, emoji or other scripts can cost a token per
+        # character: past this point the turn would push the defenses out of
+        # the model's context.
+        return error("Texto denso demais (muitos números, símbolos, emojis ou acentos): "
+                     "mande menos texto.", 400)
 
     shown = f"📎 {file_name}" + (f"\n{message}" if message else "") if file_name else message
 

@@ -333,6 +333,8 @@ async function send() {
   const text = $('inp').value.trim();
   const file = pendingFile;
   if ((!text && !file) || busy) return;
+  // The page opened while the server was down: load the game first, keep the text.
+  if (!game || !$('typing')) { refresh(); return; }
   setBusy(true); $('inp').value = ''; $('inp').disabled = true; $('send').disabled = true;
   setFile(null);
   let failed = false;

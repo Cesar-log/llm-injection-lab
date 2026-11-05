@@ -78,6 +78,10 @@ browser (static/index.html)  ->  Flask (app.py)  ->  Ollama (llm.py)
   the server is not.
 - If `LAB_CTX` and `LAB_MAX_TOKENS` leave too little room for the defenses,
   `python app.py` prints a warning when it starts.
+- Every turn is measured in worst-case tokens (digits, symbols, emoji and
+  accents count as whole tokens) and old turns are dropped, so a chat can
+  never push the prompt, and its defenses, out of the model's context. A
+  message that is too dense on its own is refused.
 
 ## Tests
 
