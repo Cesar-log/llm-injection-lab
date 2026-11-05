@@ -72,13 +72,18 @@ browser (static/index.html)  ->  Flask (app.py)  ->  Ollama (llm.py)
   answers and, after a correct login, that team's dashboard.
 - Each level is a `Level` (`levels/base.py`) with optional `check_input` and
   `check_output` filters, so new levels need no change in the server.
-- The server only listens on `127.0.0.1`: it is vulnerable on purpose.
+- The server only listens on `127.0.0.1` and only answers to `localhost`,
+  `127.0.0.1` or `::1` in the `Host` header, so other web pages can't reach
+  it (not even through DNS rebinding): the bots are vulnerable on purpose,
+  the server is not.
+- If `LAB_CTX` and `LAB_MAX_TOKENS` leave too little room for the defenses,
+  `python app.py` prints a warning when it starts.
 
 ## Tests
 
 ```bash
 pip install -r requirements-dev.txt
-pytest
+python -m pytest
 ```
 
 The tests use a fake model, so they need neither Ollama nor a fast CPU.

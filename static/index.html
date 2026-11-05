@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Invasão Acme · LLM Injection Lab</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔐</text></svg>">
 <style>
   :root {
     --bg: #0f1220; --panel: #171b2e; --panel2: #1e2340; --line: #2a3055;
@@ -11,7 +12,7 @@
     --me: #3b2f8f; --bot: #232947; --ok: #34d399; --bad: #f87171; --warn: #fbbf24;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; }
+  body { font-family: "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
   button { font-family: inherit; }
 
   /* ---------- top bar ---------- */
@@ -131,10 +132,10 @@
       <button class="clear" id="clear" title="Apaga a conversa e a memória do bot (espere a resposta terminar)">Limpar conversa</button>
     </div>
     <div class="msgs" id="msgs"></div>
-    <div class="filechip" id="filechip"><span id="filename"></span><button id="unattach" title="Remover">✕</button></div>
+    <div class="filechip" id="filechip"><span id="filename"></span><button id="unattach" title="Remover" aria-label="Remover anexo">✕</button></div>
     <div class="composer">
       <input type="file" id="fileinp" accept=".txt,text/plain" hidden>
-      <button class="attach" id="attach" title="Anexar arquivo .txt">📎</button>
+      <button class="attach" id="attach" title="Anexar arquivo .txt" aria-label="Anexar arquivo .txt">📎</button>
       <input id="inp" placeholder="Digite uma mensagem" autocomplete="off" aria-label="Mensagem">
       <button class="send" id="send" title="Enviar" aria-label="Enviar">➤</button>
     </div>
@@ -361,7 +362,7 @@ function setBusy(on) {
   document.body.classList.toggle('busy', on);
 }
 $('send').onclick = send;
-$('inp').onkeydown = e => { if (e.key === 'Enter') send(); };
+$('inp').onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) send(); };
 $('clear').onclick = async () => {
   if (busy) return;
   await api('/api/reset', { level: current }); refresh();
@@ -390,6 +391,9 @@ async function doLogin() {
   }
   $('dClue').textContent = d.clue;
   $('login').style.display = 'none'; $('dash').style.display = 'block'; $('err').textContent = '';
+  // Open the contact this login just unlocked, ready for when the player goes back.
+  const next = game && game.contacts.find(c => c.number === data.level + 1);
+  if (next && !next.unlocked && !busy) { current = next.number; setFile(null); }
   refresh();
 }
 function logout() {
@@ -397,7 +401,7 @@ function logout() {
   $('user').value = ''; $('pass').value = ''; $('err').textContent = '';
 }
 $('enter').onclick = doLogin;
-$('pass').onkeydown = $('user').onkeydown = e => { if (e.key === 'Enter') doLogin(); };
+$('pass').onkeydown = $('user').onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) doLogin(); };
 $('logout').onclick = logout;
 
 refresh();

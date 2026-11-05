@@ -57,8 +57,18 @@ def test_ollama_error_shows_only_its_message(monkeypatch):
     assert 'model "gemma3:1b" not found' in str(e.value) and "{" not in str(e.value)
 
 
-@pytest.mark.parametrize("payload", [None, {}, {"message": None}, ["x"]])
+@pytest.mark.parametrize("payload", [None, {}, {"message": None}, ["x"], {"message": {"content": None}}])
 def test_weird_replies_become_friendly_messages(monkeypatch, payload):
     monkeypatch.setattr(llm.requests, "post", lambda *a, **k: FakeResponse(200, payload))
     with pytest.raises(llm.LLMError, match="inesperada"):
         llm.chat("SYS", [])
+
+
+def test_int_env_reads_numbers_and_explains_bad_values(monkeypatch):
+    monkeypatch.setenv("LAB_TEST_NUMBER", "8")
+    assert llm.int_env("LAB_TEST_NUMBER", 2) == 8
+    monkeypatch.delenv("LAB_TEST_NUMBER")
+    assert llm.int_env("LAB_TEST_NUMBER", 2) == 2
+    monkeypatch.setenv("LAB_TEST_NUMBER", "4k")
+    with pytest.raises(SystemExit, match="LAB_TEST_NUMBER precisa ser um número inteiro"):
+        llm.int_env("LAB_TEST_NUMBER", 2)

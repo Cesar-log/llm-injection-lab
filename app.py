@@ -11,6 +11,7 @@ import pathlib
 import re
 import threading
 import time
+from urllib.parse import urlsplit
 
 from flask import Flask, jsonify, request, send_from_directory
 
@@ -25,6 +26,11 @@ MAX_FILE_CHARS = 4000       # attached .txt files (small model, small context)
 # Ollama counts tokens, we count characters. Dense text (base64, random
 # letters) can be ~2 characters per token, so assume the worst case.
 CHARS_PER_TOKEN = 2
+# The largest single turn the server accepts: message + file + wrapper text.
+BIGGEST_TURN = MAX_MESSAGE_CHARS + MAX_FILE_CHARS + 200
+# Names this server answers to. Anything else is a DNS rebinding attempt: an
+# evil site pointing its own domain at 127.0.0.1 to talk to your game.
+LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
 app = Flask(__name__, static_folder="static")
 by_number = {lv.number: lv for lv in LEVELS}
@@ -60,6 +66,16 @@ def context_budget(lv: Level) -> int:
     """Characters of chat history that fit next to this level's prompt and examples."""
     fixed = len(lv.system_prompt) + sum(len(m["content"]) for m in lv.examples)
     return (NUM_CTX - MAX_TOKENS) * CHARS_PER_TOKEN - fixed
+
+
+def config_warnings() -> list[str]:
+    """Levels whose biggest turn would not fit the context with the current settings."""
+    return [
+        f"Fase {lv.number}: LAB_CTX={NUM_CTX} com LAB_MAX_TOKENS={MAX_TOKENS} é pouco; "
+        "mensagens grandes vão empurrar as defesas para fora do contexto."
+        for lv in LEVELS
+        if context_budget(lv) < BIGGEST_TURN
+    ]
 
 
 def trim_history(history: list[dict], budget: int) -> list[dict]:
@@ -115,9 +131,19 @@ def error(message: str, status: int):
 
 # ---------- routes ----------
 @app.before_request
-def only_json_posts():
-    """A cross-site <form> can't send application/json without a CORS preflight,
-    which this server never answers, so other pages can't reset your game."""
+def only_local_json_posts():
+    """Keep other web pages away from the game.
+
+    A cross-site <form> can't send application/json without a CORS preflight,
+    which this server never answers. A page that rebinds its own domain to
+    127.0.0.1 can, but its requests still carry its own name in Host.
+    """
+    try:
+        hostname = urlsplit("//" + request.host).hostname
+    except ValueError:
+        hostname = None
+    if hostname not in LOCAL_HOSTS:
+        return error("Abra o jogo por http://localhost:5000.", 403)
     if request.method == "POST" and not request.is_json:
         return error("Envie JSON.", 415)
 
@@ -215,6 +241,8 @@ def send_message():
                     context_budget(lv),
                 )
             raw = chat(lv.system_prompt, history, lv.examples)
+            if not raw.strip():  # small models sometimes answer nothing at all
+                raise LLMError("O bot não respondeu nada. Tente de novo ou mude a mensagem.")
             blocked = lv.check_output(raw) if lv.check_output else None
             answer = blocked or raw
             with state_lock:
@@ -283,4 +311,6 @@ def restart_game():
 
 if __name__ == "__main__":
     print(f"\n  LLM Injection Lab  ->  http://localhost:5000   (model: {MODEL})\n")
+    for warning in config_warnings():
+        print(f"  [aviso] {warning}")
     app.run(host="127.0.0.1", port=5000)  # local only: this app is vulnerable on purpose

@@ -210,7 +210,6 @@ def test_non_string_message_or_file_is_empty_not_none(client):
     assert "None" not in client.calls[-1]["history"][-1]["content"]
 
 
-
 def test_restart_from_another_tab_never_logs_into_a_locked_contact(client, monkeypatch):
     # The unlock check now sits in the same locked block that writes the log,
     # so a game wiped by another tab is seen there and nothing is written.
@@ -218,7 +217,6 @@ def test_restart_from_another_tab_never_logs_into_a_locked_contact(client, monke
     monkeypatch.setattr(server, "load_progress", lambda: set())  # the other tab restarted
     r = client.post("/api/chat", json={"level": 2, "message": "hi"})
     assert r.status_code == 403 and server.chat_log[2] == []
-
 
 
 def test_progress_is_saved_atomically(client):
@@ -293,8 +291,16 @@ def test_llm_errors_become_503(client, monkeypatch):
 @pytest.mark.parametrize("lv", LEVELS, ids=lambda lv: lv.name)
 def test_biggest_allowed_turn_always_fits_the_context(lv):
     # message + file at their limits, plus the wrapper text, must fit the budget
-    biggest = server.MAX_MESSAGE_CHARS + server.MAX_FILE_CHARS + 200
-    assert server.context_budget(lv) >= biggest
+    assert server.context_budget(lv) >= server.BIGGEST_TURN
+
+
+def test_default_settings_give_no_startup_warning():
+    assert server.config_warnings() == []
+
+
+def test_too_small_context_is_warned_at_startup(monkeypatch):
+    monkeypatch.setattr(server, "NUM_CTX", 1024)
+    assert len(server.config_warnings()) == len(LEVELS)
 
 
 def test_history_is_trimmed_but_keeps_the_newest_message():
@@ -320,3 +326,34 @@ def test_corrupt_progress_file_is_ignored(client):
     assert client.get("/api/state").get_json()["cleared"] == []
     server.PROGRESS_FILE.write_text('{"cleared": 5}')
     assert client.get("/api/state").get_json()["cleared"] == []
+
+
+def test_state_never_exposes_other_forms_of_the_secrets(client):
+    from levels import level3, level6
+    body = client.get("/api/state").get_data(as_text=True)
+    for leak in [level3.BACKUP, level6.RECOVERY, level6.SECRET_B64]:
+        assert leak not in body
+
+
+@pytest.mark.parametrize("host", ["localhost", "localhost:5000", "127.0.0.1:5000", "[::1]:5000"])
+def test_local_host_names_are_served(client, host):
+    assert client.get("/api/state", headers={"Host": host}).status_code == 200
+
+
+@pytest.mark.parametrize("host", ["evil.example", "evil.example:5000", "127.0.0.1.evil.example", "[bad"])
+def test_dns_rebinding_hosts_are_refused(client, host):
+    login(client, LEVELS[0])
+    assert client.get("/", headers={"Host": host}).status_code == 403
+    r = client.post("/api/restart", json={}, headers={"Host": host})
+    assert r.status_code == 403
+    assert client.get("/api/state").get_json()["cleared"] == [1]
+
+
+@pytest.mark.parametrize("empty", ["", "   \n "])
+def test_empty_answer_is_an_error_not_a_blank_bubble(client, empty):
+    client.reply["text"] = empty
+    r = client.post("/api/chat", json={"level": 1, "message": "hi"})
+    assert r.status_code == 503 and "não respondeu" in r.get_json()["error"]
+    log = client.get("/api/state").get_json()["contacts"][0]["log"]
+    assert [e["from"] for e in log] == ["me", "sys"] and not any(e["pending"] for e in log)
+    assert server.model_history[1] == []  # the blank turn never reaches the model again
