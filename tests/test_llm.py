@@ -72,6 +72,10 @@ def test_int_env_reads_numbers_and_explains_bad_values(monkeypatch):
     monkeypatch.setenv("LAB_TEST_NUMBER", "4k")
     with pytest.raises(SystemExit, match="LAB_TEST_NUMBER precisa ser um número inteiro"):
         llm.int_env("LAB_TEST_NUMBER", 2)
+    for bad in ["0", "-3"]:  # LAB_TIMEOUT=0 would look like a bad Ollama answer
+        monkeypatch.setenv("LAB_TEST_NUMBER", bad)
+        with pytest.raises(SystemExit, match="maior que zero"):
+            llm.int_env("LAB_TEST_NUMBER", 2)
 
 
 @pytest.mark.parametrize("base", ["http://localhost:11434", "http://localhost:11434/", "http://pc:11434//"])

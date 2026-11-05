@@ -36,6 +36,8 @@ MESSAGE_OVERHEAD = 8 * CHARS_PER_TOKEN
 MAX_LOG_ENTRIES = 200       # per contact, so /api/state stays small in long sessions
 # The largest single turn the server accepts: message + file + wrapper text.
 BIGGEST_TURN = MAX_MESSAGE_CHARS + MAX_FILE_CHARS + 200
+# A line like the ones in docs/log-exemplo.txt, to size a realistic full file.
+TYPICAL_LOG_LINE = "[2026-11-05 08:01] server web-01: CPU 97% for 10 minutes\n"
 # Names this server answers to. Anything else is a DNS rebinding attempt: an
 # evil site pointing its own domain at 127.0.0.1 to talk to your game.
 LOCAL_HOSTS = {"localhost", "127.0.0.1"}
@@ -90,14 +92,33 @@ def context_budget(lv: Level) -> int:
     return (NUM_CTX - MAX_TOKENS) * CHARS_PER_TOKEN - fixed
 
 
+def typical_turn_cost() -> int:
+    """Cost of the turns players really send at the limits: a full message of
+    words, or a full log file (timestamps, digits and symbols are dense)."""
+    words = message_cost("a" * BIGGEST_TURN)
+    log = (TYPICAL_LOG_LINE * (MAX_FILE_CHARS // len(TYPICAL_LOG_LINE) + 1))[:MAX_FILE_CHARS]
+    file_turn = message_cost("Please summarize the attached file.\n\n" + wrap_file("log.txt", log))
+    return max(words, file_turn)
+
+
 def config_warnings() -> list[str]:
-    """Levels whose biggest turn would not fit the context with the current settings."""
-    return [
-        f"Fase {lv.number}: LAB_CTX={NUM_CTX} com LAB_MAX_TOKENS={MAX_TOKENS} é pouco; "
-        "mensagens grandes vão empurrar as defesas para fora do contexto."
-        for lv in LEVELS
-        if context_budget(lv) < BIGGEST_TURN
-    ]
+    """Levels where LAB_CTX and LAB_MAX_TOKENS leave too little room for normal turns.
+
+    The per-turn check in /api/chat always protects the defenses; these
+    warnings only say that players will see their messages refused.
+    """
+    settings = f"LAB_CTX={NUM_CTX} com LAB_MAX_TOKENS={MAX_TOKENS}"
+    needed = typical_turn_cost()
+    warnings = []
+    for lv in LEVELS:
+        budget = context_budget(lv)
+        if budget <= MESSAGE_OVERHEAD:
+            warnings.append(f"Fase {lv.number}: {settings} não deixa espaço para nenhuma "
+                            "mensagem; todas serão recusadas.")
+        elif budget < needed:
+            warnings.append(f"Fase {lv.number}: {settings} é pouco; mensagens grandes ou logs "
+                            "perto do limite serão recusados como texto denso.")
+    return warnings
 
 
 def trim_history(history: list[dict], budget: int) -> list[dict]:

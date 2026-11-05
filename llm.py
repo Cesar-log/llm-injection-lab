@@ -5,12 +5,19 @@ import requests
 
 
 def int_env(name: str, default: int) -> int:
-    """Read a whole-number setting, with a clear message instead of a traceback."""
+    """Read a positive whole-number setting, with a clear message instead of a traceback.
+
+    Zero or less makes no sense for any of them (LAB_TIMEOUT=0 would even fail
+    inside requests and look like a bad answer from Ollama).
+    """
     value = os.environ.get(name, str(default))
     try:
-        return int(value)
+        number = int(value)
     except ValueError:
-        raise SystemExit(f"{name} precisa ser um número inteiro (recebi {value!r}).")
+        number = 0
+    if number < 1:
+        raise SystemExit(f"{name} precisa ser um número inteiro maior que zero (recebi {value!r}).")
+    return number
 
 
 def chat_url(base: str) -> str:

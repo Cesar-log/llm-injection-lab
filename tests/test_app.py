@@ -303,6 +303,28 @@ def test_too_small_context_is_warned_at_startup(monkeypatch):
     assert len(server.config_warnings()) == len(LEVELS)
 
 
+def test_context_with_no_room_at_all_says_so(monkeypatch):
+    monkeypatch.setattr(server, "NUM_CTX", 200)  # less than the prompts themselves
+    warnings = server.config_warnings()
+    assert len(warnings) == len(LEVELS) and all("nenhuma" in w for w in warnings)
+
+
+def test_startup_warning_counts_dense_log_files(monkeypatch):
+    # Enough room for a full message of words, not for a full log of digits.
+    lv = LEVELS[-1]
+    words = server.message_cost("a" * server.BIGGEST_TURN)
+    assert server.typical_turn_cost() > words
+    monkeypatch.setattr(server, "NUM_CTX", server.NUM_CTX - (server.context_budget(lv) - words) // 2)
+    assert server.context_budget(lv) >= words
+    assert any(w.startswith(f"Fase {lv.number}:") for w in server.config_warnings())
+
+
+def test_typical_log_line_is_as_dense_as_the_sample_log():
+    sample = (server.ROOT / "docs" / "log-exemplo.txt").read_text(encoding="utf-8")
+    line = server.TYPICAL_LOG_LINE
+    assert server.cost(line) / len(line) >= server.cost(sample) / len(sample)
+
+
 def test_history_is_trimmed_but_keeps_the_newest_message():
     big = [{"role": "user", "content": "x" * 3000}, {"role": "assistant", "content": "y" * 3000}] * 3
     newest = {"role": "user", "content": "newest"}
