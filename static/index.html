@@ -48,6 +48,7 @@
     background: radial-gradient(circle at 20% 20%, #161a33 0, transparent 40%), radial-gradient(circle at 80% 70%, #14213a 0, transparent 40%), var(--bg); }
   .chathead { display: flex; gap: 12px; align-items: center; padding: 10px 18px; background: var(--panel); border-bottom: 1px solid var(--line); }
   .chathead .status { font-size: 12px; color: var(--ok); }
+  .chathead .defense { color: var(--muted); margin-left: 6px; }
   .chathead .clear { margin-left: auto; background: none; border: 1px solid var(--line); color: var(--muted); padding: 5px 10px; border-radius: 8px; cursor: pointer; font-size: 12px; }
   .msgs { flex: 1; overflow-y: auto; padding: 20px 8%; display: flex; flex-direction: column; gap: 8px; }
   .day { align-self: center; font-size: 11px; color: var(--muted); background: var(--panel); padding: 4px 10px; border-radius: 8px; margin: 6px 0; }
@@ -125,7 +126,7 @@
   <div class="chat">
     <div class="chathead">
       <div class="avatar" id="headAvatar"></div>
-      <div><div style="font-weight:600" id="headName"></div><div class="status">● online</div></div>
+      <div><div style="font-weight:600" id="headName"></div><div class="status">● online <span class="defense" id="headDefense"></span></div></div>
       <button class="clear" id="clear" title="Apaga a conversa e a memória do bot">Limpar conversa</button>
     </div>
     <div class="msgs" id="msgs"></div>
@@ -144,8 +145,8 @@
   <div class="login" id="login">
     <div class="logo">ACME <span>Portal</span></div>
     <p>Acesso interno — somente funcionários</p>
-    <label>Usuário</label><input id="user" placeholder="usuário" autocomplete="off">
-    <label>Senha</label><input id="pass" type="password" placeholder="••••••••">
+    <label for="user">Usuário</label><input id="user" placeholder="usuário" autocomplete="off">
+    <label for="pass">Senha</label><input id="pass" type="password" placeholder="••••••••">
     <button id="enter">Entrar</button>
     <div class="err" id="err"></div>
   </div>
@@ -180,6 +181,8 @@ $('fileinp').onchange = () => {
   const f = $('fileinp').files[0];
   if (!f) return;
   const max = game ? game.limits.file : 4000;
+  // Cheap check first, so a huge file is never loaded into memory.
+  if (f.size > max * 4) { alert(`Arquivo grande demais (máx. ${max} caracteres).`); setFile(null); return; }
   const r = new FileReader();
   r.onload = () => {
     if (r.result.length > max) { alert(`Arquivo grande demais: ${r.result.length} caracteres (máx. ${max}).`); setFile(null); return; }
@@ -289,6 +292,7 @@ function typingEl() {
 function renderChat() {
   const c = game.contacts.find(x => x.number === current);
   $('headAvatar').textContent = c.avatar; $('headName').textContent = c.name;
+  $('headDefense').textContent = `· Fase ${c.number} (${c.level_name}) — 🛡️ ${c.defense}`;
   $('attach').classList.toggle('show', !!c.accepts_files);
   if (!c.accepts_files) setFile(null);
   const m = $('msgs'); m.innerHTML = '<div class="day">HOJE</div>';
@@ -337,10 +341,10 @@ async function send() {
   } finally {
     clearInterval(timer); $('secs').textContent = ''; typing.style.display = 'none';
     m.scrollTop = m.scrollHeight;
-    busy = false; $('inp').disabled = false; $('send').disabled = false; $('inp').focus();
+    busy = false;
   }
-  const st = await api('/api/state');
-  if (st.ok) { game = st.data; renderContacts(); }
+  await refresh();  // re-render from the server: times, input state (files-only), contacts
+  if (!$('inp').disabled) $('inp').focus();
 }
 $('send').onclick = send;
 $('inp').onkeydown = e => { if (e.key === 'Enter') send(); };

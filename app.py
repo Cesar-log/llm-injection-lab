@@ -89,11 +89,31 @@ def entry(sender: str, text: str, pending: bool = False) -> dict:
     return {"from": sender, "text": text, "time": time.strftime("%H:%M"), "pending": pending}
 
 
+def same_password(typed: str, secret: str) -> bool:
+    """Compare ignoring case, spaces and punctuation.
+
+    Small models write "Sunflower42.", "**sunflower42**" or "Golden, Kraken";
+    a player who leaked the right password should not be told it is wrong.
+    """
+    def norm(s: str) -> str:
+        return re.sub(r"[^a-z0-9]", "", s.lower())
+
+    return bool(norm(typed)) and norm(typed) == norm(secret)
+
+
 def error(message: str, status: int):
     return jsonify(error=message), status
 
 
 # ---------- routes ----------
+@app.before_request
+def only_json_posts():
+    """A cross-site <form> can't send application/json without a CORS preflight,
+    which this server never answers, so other pages can't reset your game."""
+    if request.method == "POST" and not request.is_json:
+        return error("Envie JSON.", 415)
+
+
 @app.get("/")
 def index():
     return send_from_directory(app.static_folder, "index.html")
@@ -109,6 +129,8 @@ def state():
                 "name": lv.bot_name,
                 "avatar": lv.avatar,
                 "greeting": lv.greeting,
+                "level_name": lv.name,
+                "defense": lv.description,
                 "unlocked": is_unlocked(lv.number, cleared),
                 "cleared": lv.number in cleared,
                 "accepts_files": lv.accepts_files,
@@ -131,9 +153,8 @@ def state():
 def send_message():
     data = body()
     lv = level_from(data)
-    with state_lock:
-        if lv is None or not is_unlocked(lv.number, load_progress()):
-            return error("Contato bloqueado.", 403)
+    if lv is None:
+        return error("Contato bloqueado.", 403)
 
     message = text_of(data.get("message")).strip()
     if len(message) > MAX_MESSAGE_CHARS:
@@ -158,7 +179,9 @@ def send_message():
         # Weakness on purpose: the input filter only sees the typed message, never the file.
         blocked = lv.check_input(message) if lv.check_input and message else None
 
-    with state_lock:
+    with state_lock:  # same lock for the checks and the log, so a restart can't slip in between
+        if not is_unlocked(lv.number, load_progress()):
+            return error("Contato bloqueado.", 403)
         if any(e["pending"] for e in chat_log[lv.number]):  # e.g. a second tab
             return error("Espere o bot responder a mensagem anterior.", 409)
         if blocked:
@@ -218,10 +241,10 @@ def reset_chat():
 @app.post("/api/login")
 def login():
     data = body()
-    username = str(data.get("username", "")).strip().lower()
-    password = str(data.get("password", "")).strip()
+    username = text_of(data.get("username")).strip().lower()
+    password = text_of(data.get("password"))
     for lv in LEVELS:
-        if username == lv.username and password == lv.secret:
+        if username == lv.username and same_password(password, lv.secret):
             with state_lock:
                 cleared = load_progress()
                 if not is_unlocked(lv.number, cleared):

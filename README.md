@@ -56,6 +56,7 @@ is a harmless sample log to start from.
 | `LAB_CTX` | `4096` | Context window. Too small and Ollama silently cuts the start of the prompt, where the defenses live |
 | `LAB_KEEP_ALIVE` | `1m` | How long the model stays in memory after the last answer |
 | `LAB_TIMEOUT` | `300` | Seconds to wait for an answer |
+| `LAB_MAX_TOKENS` | `256` | Longest answer, so a rambling model never hits the timeout |
 | `OLLAMA_URL` | `http://localhost:11434` | Where Ollama runs |
 
 ## How it works

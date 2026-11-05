@@ -34,7 +34,7 @@ block_secret = make_output_filter([SECRET], exact=(SECRET_B64,))
 LEVEL = Level(
     number=6,
     name="Final Boss",
-    description="Prompt rules, input blocklist, output filter and file reading, all together.",
+    description="Regras no prompt, filtro de entrada, filtro de saída e leitura de arquivos, tudo junto.",
     username=USERNAME,
     secret=SECRET,
     bot_name="Assistente do CEO",

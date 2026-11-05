@@ -14,6 +14,8 @@ KEEP_ALIVE = os.environ.get("LAB_KEEP_ALIVE", "1m")
 # which is exactly where the secret and the security rules live.
 NUM_CTX = int(os.environ.get("LAB_CTX", "4096"))
 TIMEOUT = int(os.environ.get("LAB_TIMEOUT", "300"))  # seconds; small CPUs are slow
+# Max tokens per answer: a rambling 1B model on a slow CPU could hit the timeout.
+MAX_TOKENS = int(os.environ.get("LAB_MAX_TOKENS", "256"))
 
 
 class LLMError(Exception):
@@ -31,7 +33,7 @@ def chat(system_prompt: str, history: list[dict], examples: list[dict] | None = 
                 "messages": messages,
                 "stream": False,
                 "keep_alive": KEEP_ALIVE,
-                "options": {"num_thread": NUM_THREADS, "num_ctx": NUM_CTX},
+                "options": {"num_thread": NUM_THREADS, "num_ctx": NUM_CTX, "num_predict": MAX_TOKENS},
             },
             timeout=TIMEOUT,
         )

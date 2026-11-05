@@ -18,7 +18,7 @@ FILE_END = "<<<END FILE>>>"
 class Level:
     number: int
     name: str
-    description: str      # what the player learns about this level
+    description: str      # the defense, shown to the player in the chat header (pt-BR)
     # Portal login leaked by this level. The password is fake, never a real
     # credential. Plain words on purpose: small models can only copy text.
     username: str

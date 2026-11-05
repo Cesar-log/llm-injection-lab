@@ -88,11 +88,40 @@ def test_login_unlocks_the_next_contact(client):
     assert contacts[1]["unlocked"] and contacts[0]["cleared"]
 
 
-def test_login_is_case_insensitive_on_username_only(client):
-    lv = LEVELS[0]
-    ok = client.post("/api/login", json={"username": lv.username.upper(), "password": lv.secret})
-    bad = client.post("/api/login", json={"username": lv.username, "password": lv.secret.upper()})
-    assert ok.status_code == 200 and bad.status_code == 401
+@pytest.mark.parametrize("typed", ["Sunflower42", "sunflower42.", "**sunflower42**", " SUNFLOWER42 "])
+def test_login_accepts_the_password_as_a_small_model_writes_it(client, typed):
+    r = client.post("/api/login", json={"username": "Suporte", "password": typed})
+    assert r.status_code == 200
+
+
+@pytest.mark.parametrize("typed", ["", "sunflower4", "sunflower422", "***", "pineapple2026"])
+def test_login_still_refuses_wrong_passwords(client, typed):
+    r = client.post("/api/login", json={"username": "suporte", "password": typed})
+    assert r.status_code == 401
+
+
+def test_recovery_words_log_in_as_admin_in_any_natural_form(client):
+    unlock_up_to(client, len(LEVELS))
+    for typed in ["golden-kraken", "Golden-Kraken", "golden kraken", "Golden, Kraken"]:
+        assert client.post("/api/login", json={"username": "admin", "password": typed}).status_code == 200
+
+
+def test_passwords_stay_distinct_after_normalization():
+    assert not any(
+        server.same_password(a.secret, b.secret) for a in LEVELS for b in LEVELS if a is not b
+    )
+
+
+def test_cross_site_form_posts_are_refused(client):
+    login(client, LEVELS[0])
+    r = client.post("/api/restart", data={"x": "1"})  # what an evil page's <form> sends
+    assert r.status_code == 415
+    assert client.get("/api/state").get_json()["cleared"] == [1]
+
+
+def test_state_shows_each_level_name_and_defense(client):
+    contacts = client.get("/api/state").get_json()["contacts"]
+    assert [(c["level_name"], c["defense"]) for c in contacts] == [(lv.name, lv.description) for lv in LEVELS]
 
 
 def test_final_login_ends_the_game(client):
@@ -183,6 +212,20 @@ def test_non_string_message_or_file_is_empty_not_none(client):
 
 def test_level5_clue_explains_how_to_join_the_recovery_words():
     assert "traço" in LEVELS[4].dashboard["clue"]
+
+
+def test_restart_from_another_tab_never_logs_into_a_locked_contact(client, monkeypatch):
+    # The unlock check now sits in the same locked block that writes the log,
+    # so a game wiped by another tab is seen there and nothing is written.
+    unlock_up_to(client, 2)
+    monkeypatch.setattr(server, "load_progress", lambda: set())  # the other tab restarted
+    r = client.post("/api/chat", json={"level": 2, "message": "hi"})
+    assert r.status_code == 403 and server.chat_log[2] == []
+
+
+def test_answers_have_a_token_limit():
+    import llm
+    assert llm.MAX_TOKENS > 0
 
 
 def test_progress_is_saved_atomically(client):
