@@ -25,8 +25,10 @@ and your goal is to make the bot leak the password anyway.
 ```bash
 ollama pull gemma3:1b
 pip install -r requirements.txt
-streamlit run app.py
+python app.py
 ```
+
+Then open http://localhost:5000
 
 Use another model with the `LAB_MODEL` environment variable.
 
