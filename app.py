@@ -19,7 +19,6 @@ ROOT = pathlib.Path(__file__).parent
 PROGRESS_FILE = pathlib.Path(os.environ.get("LAB_PROGRESS", ROOT / "progress.json"))
 TOTAL_LEVELS = 6
 COMING_SOON = [  # shown locked in the messenger until they exist
-    {"number": 4, "name": "Bot do RH", "avatar": "👥"},
     {"number": 5, "name": "Suporte de TI", "avatar": "🛠️"},
     {"number": 6, "name": "Assistente do CEO", "avatar": "👑"},
 ]

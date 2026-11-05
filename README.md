@@ -1,4 +1,4 @@
-# LLM Injection Lab
+﻿# LLM Injection Lab
 
 > 🚧 Work in progress
 
@@ -13,7 +13,8 @@ and your goal is to make the bot leak the password anyway.
 | 1 - Open Door | None |
 | 2 - Polite Refusal | System prompt rule + refusal examples |
 | 3 - Output Guard | Output filter that blocks the password |
-| 4 | *coming soon* |
+| 4 - Input Guard | Blocklist filter on the player's message |
+| 5 | *coming soon* |
 
 ## Requirements
 

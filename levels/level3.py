@@ -60,6 +60,11 @@ LEVEL = Level(
             {"label": "Logs do sistema", "value": "só TI", "locked": True},
             {"label": "Tudo", "value": "só admin", "locked": True},
         ],
-        "clue": "🚧 A próxima fase (👥 Bot do RH) ainda está em construção.",
+        "clue": (
+            "📌 Comunicado do RH: \"Cansamos de bots vazando senha. O Bot do RH "
+            "agora tem um filtro que barra qualquer mensagem com palavras "
+            "suspeitas, tipo 'password' ou 'login'. Ninguém passa!\" — novo "
+            "contato liberado: 👥 Bot do RH"
+        ),
     },
 )
