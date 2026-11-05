@@ -72,3 +72,8 @@ def test_int_env_reads_numbers_and_explains_bad_values(monkeypatch):
     monkeypatch.setenv("LAB_TEST_NUMBER", "4k")
     with pytest.raises(SystemExit, match="LAB_TEST_NUMBER precisa ser um número inteiro"):
         llm.int_env("LAB_TEST_NUMBER", 2)
+
+
+@pytest.mark.parametrize("base", ["http://localhost:11434", "http://localhost:11434/", "http://pc:11434//"])
+def test_chat_url_never_doubles_the_slash(base):
+    assert llm.chat_url(base).endswith(":11434/api/chat")

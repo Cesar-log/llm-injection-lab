@@ -13,7 +13,12 @@ def int_env(name: str, default: int) -> int:
         raise SystemExit(f"{name} precisa ser um número inteiro (recebi {value!r}).")
 
 
-OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434") + "/api/chat"
+def chat_url(base: str) -> str:
+    """A trailing slash in OLLAMA_URL would give "//api/chat", which Ollama answers with 404."""
+    return base.rstrip("/") + "/api/chat"
+
+
+OLLAMA_URL = chat_url(os.environ.get("OLLAMA_URL", "http://localhost:11434"))
 MODEL = os.environ.get("LAB_MODEL", "gemma3:1b")
 # Keep the PC usable while the model thinks: use only some CPU threads.
 NUM_THREADS = int_env("LAB_THREADS", 2)

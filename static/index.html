@@ -262,7 +262,9 @@ function renderProgress() {
   b.onclick = async () => {
     if (busy) return;
     if (!confirm('Apagar todo o progresso e as conversas?')) return;
-    await api('/api/restart', {}); current = 1; firstLoad = false; logout(); refresh();
+    const { ok, data } = await api('/api/restart', {});
+    if (!ok) { alert(data.error || 'Erro no servidor. O progresso não foi apagado.'); return; }
+    current = 1; firstLoad = false; logout(); refresh();
   };
   p.appendChild(b);
 }
@@ -347,8 +349,8 @@ async function send() {
     if (ok) {
       m.insertBefore(bubble(data.blocked ? 'sys' : 'bot', data.answer, data.blocked ? '' : now()), typing);
     } else {
-      failed = true;
-      m.insertBefore(bubble('sys', '⚠️ ' + (data.error || 'Erro no servidor.')), typing);
+      failed = '⚠️ ' + (data.error || 'Erro no servidor.');
+      m.insertBefore(bubble('sys', failed), typing);
     }
   } finally {
     clearInterval(timer); $('secs').textContent = ''; typing.style.display = 'none';
@@ -357,6 +359,14 @@ async function send() {
   }
   await refresh();  // re-render from the server: times, input state (files-only), contacts
   if (failed) {  // give the player their attack back instead of making them redo it
+    // Refusals like "too long" never reach the server log, so the re-render
+    // above dropped them: show the reason again unless the log already has it.
+    const c = game && game.contacts.find(x => x.number === current);
+    const last = c && c.log.length ? c.log[c.log.length - 1] : null;
+    if (!busy && !(last && last.from === 'sys' && last.text === failed)) {
+      const t = $('typing'); t.parentNode.insertBefore(bubble('sys', failed), t);
+      t.parentNode.scrollTop = t.parentNode.scrollHeight;
+    }
     if (!$('inp').disabled) $('inp').value = text;
     if (file) setFile(file);
   }
