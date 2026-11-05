@@ -10,41 +10,85 @@ import os
 import pathlib
 import re
 import threading
+import time
 
 from flask import Flask, jsonify, request, send_from_directory
 
 from levels import LEVELS
-from levels.level5 import wrap_file
+from levels.base import Level, wrap_file
 from llm import MODEL, LLMError, chat
 
 ROOT = pathlib.Path(__file__).parent
 PROGRESS_FILE = pathlib.Path(os.environ.get("LAB_PROGRESS", ROOT / "progress.json"))
-TOTAL_LEVELS = 6
-MAX_FILE_CHARS = 4000  # attached .txt files are cut here (small model, small context)
-COMING_SOON = []  # placeholders shown locked in the messenger until they exist
+MAX_MESSAGE_CHARS = 1000
+MAX_FILE_CHARS = 4000       # attached .txt files (small model, small context)
+HISTORY_CHAR_BUDGET = 8000  # older turns are dropped so prompt + chat fit the context
 
 app = Flask(__name__, static_folder="static")
 by_number = {lv.number: lv for lv in LEVELS}
 model_history = {lv.number: [] for lv in LEVELS}  # what the model sees
 chat_log = {lv.number: [] for lv in LEVELS}       # what the player sees
+# Bumped by reset/restart: a reply that started before it must not write back.
+generation = {lv.number: 0 for lv in LEVELS}
 model_lock = threading.Lock()  # one answer at a time, the CPU is small
+state_lock = threading.Lock()  # guards the dicts above and the progress file
 
 
+# ---------- helpers ----------
 def load_progress() -> set[int]:
     try:
-        return set(json.loads(PROGRESS_FILE.read_text())["cleared"])
-    except (FileNotFoundError, ValueError, KeyError):
+        cleared = json.loads(PROGRESS_FILE.read_text())["cleared"]
+        return {n for n in cleared if type(n) is int and n in by_number}
+    except (OSError, ValueError, KeyError, TypeError):
         return set()
 
 
 def save_progress(cleared: set[int]) -> None:
-    PROGRESS_FILE.write_text(json.dumps({"cleared": sorted(cleared)}))
+    """Write to a temp file first, so a crash mid-write never wipes the progress."""
+    tmp = PROGRESS_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps({"cleared": sorted(cleared)}))
+    os.replace(tmp, PROGRESS_FILE)
 
 
 def is_unlocked(number: int, cleared: set[int]) -> bool:
     return number == 1 or (number - 1) in cleared
 
 
+def trim_history(history: list[dict], budget: int = HISTORY_CHAR_BUDGET) -> list[dict]:
+    """Drop the oldest user/bot pairs until the history fits the budget.
+
+    The newest message is always kept. Without this, a long chat pushes the
+    system prompt out of the model's context and the defenses disappear.
+    """
+    history = list(history)
+    while len(history) > 1 and sum(len(m["content"]) for m in history) > budget:
+        history = history[2:] if len(history) > 2 else history[1:]
+    return history
+
+
+def clean_file_name(name: str) -> str:
+    return re.sub(r"[^\w.\-]", "_", name)[:60] or "file.txt"
+
+
+def body() -> dict:
+    data = request.get_json(silent=True)
+    return data if isinstance(data, dict) else {}
+
+
+def level_from(data: dict) -> Level | None:
+    number = data.get("level")
+    return by_number.get(number) if type(number) is int else None  # bool is not a level
+
+
+def entry(sender: str, text: str, pending: bool = False) -> dict:
+    return {"from": sender, "text": text, "time": time.strftime("%H:%M"), "pending": pending}
+
+
+def error(message: str, status: int):
+    return jsonify(error=message), status
+
+
+# ---------- routes ----------
 @app.get("/")
 def index():
     return send_from_directory(app.static_folder, "index.html")
@@ -52,106 +96,148 @@ def index():
 
 @app.get("/api/state")
 def state():
-    cleared = load_progress()
-    contacts = [
-        {
-            "number": lv.number,
-            "name": lv.bot_name,
-            "avatar": lv.avatar,
-            "greeting": lv.greeting,
-            "unlocked": is_unlocked(lv.number, cleared),
-            "cleared": lv.number in cleared,
-            "log": chat_log[lv.number],
-            "accepts_files": lv.accepts_files,
-        }
-        for lv in LEVELS
-    ]
-    contacts += [{**c, "unlocked": False, "soon": True} for c in COMING_SOON]
-    return jsonify(contacts=contacts, cleared=sorted(cleared), total=TOTAL_LEVELS, model=MODEL)
+    with state_lock:
+        cleared = load_progress()
+        contacts = [
+            {
+                "number": lv.number,
+                "name": lv.bot_name,
+                "avatar": lv.avatar,
+                "greeting": lv.greeting,
+                "unlocked": is_unlocked(lv.number, cleared),
+                "cleared": lv.number in cleared,
+                "accepts_files": lv.accepts_files,
+                "pending": any(e["pending"] for e in chat_log[lv.number]),
+                "log": [dict(e) for e in chat_log[lv.number]],
+            }
+            for lv in LEVELS
+        ]
+    return jsonify(
+        contacts=contacts,
+        cleared=sorted(cleared),
+        total=len(LEVELS),
+        model=MODEL,
+        limits={"message": MAX_MESSAGE_CHARS, "file": MAX_FILE_CHARS},
+    )
 
 
 @app.post("/api/chat")
 def send_message():
-    data = request.get_json(silent=True) or {}
-    lv = by_number.get(data.get("level"))
-    if lv is None or not is_unlocked(lv.number, load_progress()):
-        return jsonify(error="Contato bloqueado."), 403
-    message = str(data.get("message", "")).strip()[:1000]
+    data = body()
+    lv = level_from(data)
+    with state_lock:
+        if lv is None or not is_unlocked(lv.number, load_progress()):
+            return error("Contato bloqueado.", 403)
+
+    message = str(data.get("message", "")).strip()
+    if len(message) > MAX_MESSAGE_CHARS:
+        return error(f"Mensagem longa demais (máx. {MAX_MESSAGE_CHARS} caracteres).", 400)
     file_name, file_text = None, None
     attached = data.get("file")
     if lv.accepts_files and isinstance(attached, dict):
-        file_name = re.sub(r"[^\w.\-]", "_", str(attached.get("name", "file.txt")))[:60]
-        file_text = str(attached.get("text", ""))[:MAX_FILE_CHARS]
+        file_name = clean_file_name(str(attached.get("name", "")))
+        file_text = str(attached.get("text", ""))
+        if len(file_text) > MAX_FILE_CHARS:
+            return error(f"Arquivo grande demais (máx. {MAX_FILE_CHARS} caracteres).", 400)
     if not message and file_text is None:
-        return jsonify(error="Mensagem vazia."), 400
+        return error("Mensagem vazia.", 400)
 
     shown = f"📎 {file_name}" + (f"\n{message}" if message else "") if file_name else message
 
     if lv.files_only and file_text is None:
-        blocked = answer = "📎 Este contato só processa arquivos .txt anexados."
+        blocked = "📎 Este contato só processa arquivos .txt anexados."
     else:
-        # Note: the input filter only sees the typed message, never the file.
+        # Weakness on purpose: the input filter only sees the typed message, never the file.
         blocked = lv.check_input(message) if lv.check_input and message else None
     if blocked:
-        answer = blocked
-    else:
-        content = message or "Please summarize the attached file."
-        if file_text is not None:
-            content += "\n\n" + wrap_file(file_name, file_text)
-        history = model_history[lv.number] + [{"role": "user", "content": content}]
-        try:
-            with model_lock:
-                raw = chat(lv.system_prompt, history, lv.examples)
-        except LLMError as e:
-            return jsonify(error=str(e)), 503
-        blocked = lv.check_output(raw) if lv.check_output else None
-        answer = blocked or raw
-        model_history[lv.number] = history + [{"role": "assistant", "content": answer}]
+        with state_lock:
+            chat_log[lv.number] += [entry("me", shown), entry("sys", blocked)]
+        return jsonify(answer=blocked, blocked=True)
 
-    chat_log[lv.number] += [
-        {"from": "me", "text": shown},
-        {"from": "sys" if blocked else "bot", "text": answer},
-    ]
+    # Log the question right away, so a page reload still shows it (and the
+    # "typing" bubble) while the model works.
+    with state_lock:
+        gen = generation[lv.number]
+        mine = entry("me", shown, pending=True)
+        chat_log[lv.number].append(mine)
+
+    content = message or "Please summarize the attached file."
+    if file_text is not None:
+        content += "\n\n" + wrap_file(file_name, file_text)
+
+    with model_lock:  # one model call at a time, so histories never interleave
+        with state_lock:
+            stale = gen != generation[lv.number] or not is_unlocked(lv.number, load_progress())
+            history = trim_history(model_history[lv.number] + [{"role": "user", "content": content}])
+            if stale:
+                mine["pending"] = False
+        if stale:  # chat was cleared or the game restarted while waiting in line
+            return error("A conversa foi apagada antes da resposta.", 409)
+        try:
+            raw = chat(lv.system_prompt, history, lv.examples)
+        except LLMError as e:
+            with state_lock:
+                mine["pending"] = False
+                if gen == generation[lv.number]:
+                    chat_log[lv.number].append(entry("sys", f"⚠️ {e}"))
+            return error(str(e), 503)
+
+    blocked = lv.check_output(raw) if lv.check_output else None
+    answer = blocked or raw
+    with state_lock:
+        mine["pending"] = False
+        if gen != generation[lv.number]:
+            return error("A conversa foi apagada antes da resposta.", 409)
+        model_history[lv.number] = history + [{"role": "assistant", "content": answer}]
+        chat_log[lv.number].append(entry("sys" if blocked else "bot", answer))
     return jsonify(answer=answer, blocked=bool(blocked))
 
 
 @app.post("/api/reset")
 def reset_chat():
-    number = (request.get_json(silent=True) or {}).get("level")
-    if number in by_number:
-        model_history[number] = []
-        chat_log[number] = []
+    lv = level_from(body())
+    if lv is not None:
+        with state_lock:
+            generation[lv.number] += 1
+            model_history[lv.number] = []
+            chat_log[lv.number] = []
     return jsonify(ok=True)
 
 
 @app.post("/api/login")
 def login():
-    data = request.get_json(silent=True) or {}
+    data = body()
     username = str(data.get("username", "")).strip().lower()
     password = str(data.get("password", "")).strip()
     for lv in LEVELS:
         if username == lv.username and password == lv.secret:
-            cleared = load_progress() | {lv.number}
-            save_progress(cleared)
+            with state_lock:
+                cleared = load_progress()
+                if not is_unlocked(lv.number, cleared):
+                    return error("Login válido, mas esse setor ainda não foi alcançado. "
+                                 "Siga a ordem dos contatos.", 403)
+                save_progress(cleared | {lv.number})
             return jsonify(
                 ok=True,
                 level=lv.number,
                 username=lv.username,
                 dashboard=lv.dashboard,
-                final=lv.number == TOTAL_LEVELS,
+                final=lv.number == LEVELS[-1].number,
             )
-    return jsonify(ok=False, error="Usuário ou senha inválidos."), 401
+    return error("Usuário ou senha inválidos.", 401)
 
 
 @app.post("/api/restart")
 def restart_game():
-    save_progress(set())
-    for n in model_history:
-        model_history[n] = []
-        chat_log[n] = []
+    with state_lock:
+        save_progress(set())
+        for n in model_history:
+            generation[n] += 1
+            model_history[n] = []
+            chat_log[n] = []
     return jsonify(ok=True)
 
 
 if __name__ == "__main__":
     print(f"\n  LLM Injection Lab  ->  http://localhost:5000   (model: {MODEL})\n")
-    app.run(port=5000)
+    app.run(host="127.0.0.1", port=5000)  # local only: this app is vulnerable on purpose

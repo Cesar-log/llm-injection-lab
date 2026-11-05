@@ -9,6 +9,11 @@ MODEL = os.environ.get("LAB_MODEL", "gemma3:1b")
 NUM_THREADS = int(os.environ.get("LAB_THREADS", "2"))
 # Unload the model from memory after this much idle time.
 KEEP_ALIVE = os.environ.get("LAB_KEEP_ALIVE", "1m")
+# Context window in tokens. Ollama's default can be as low as 2048, and when
+# the conversation does not fit it silently drops the START of the prompt,
+# which is exactly where the secret and the security rules live.
+NUM_CTX = int(os.environ.get("LAB_CTX", "4096"))
+TIMEOUT = int(os.environ.get("LAB_TIMEOUT", "300"))  # seconds; small CPUs are slow
 
 
 class LLMError(Exception):
@@ -26,13 +31,17 @@ def chat(system_prompt: str, history: list[dict], examples: list[dict] | None = 
                 "messages": messages,
                 "stream": False,
                 "keep_alive": KEEP_ALIVE,
-                "options": {"num_thread": NUM_THREADS},
+                "options": {"num_thread": NUM_THREADS, "num_ctx": NUM_CTX},
             },
-            timeout=180,
+            timeout=TIMEOUT,
         )
         r.raise_for_status()
+        return r.json()["message"]["content"]
     except requests.ConnectionError:
-        raise LLMError("Ollama is not running. Start it and try again.")
+        raise LLMError("O Ollama não está rodando. Abra o Ollama e tente de novo.")
+    except requests.Timeout:
+        raise LLMError(f"O modelo demorou mais de {TIMEOUT}s para responder. Tente de novo.")
     except requests.HTTPError:
-        raise LLMError(f"Ollama error: {r.text}  (did you run `ollama pull {MODEL}`?)")
-    return r.json()["message"]["content"]
+        raise LLMError(f"Erro do Ollama: {r.text} (você rodou `ollama pull {MODEL}`?)")
+    except (ValueError, KeyError):
+        raise LLMError("O Ollama devolveu uma resposta inesperada.")
