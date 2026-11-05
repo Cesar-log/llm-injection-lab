@@ -14,7 +14,8 @@ and your goal is to make the bot leak the password anyway.
 | 2 - Polite Refusal | System prompt rule + refusal examples |
 | 3 - Output Guard | Output filter that blocks the password |
 | 4 - Input Guard | Blocklist filter on the player's message |
-| 5 | *coming soon* |
+| 5 - Poisoned File | Bot only summarizes attached files, told never to obey them (indirect injection) |
+| 6 | *coming soon* |
 
 ## Requirements
 

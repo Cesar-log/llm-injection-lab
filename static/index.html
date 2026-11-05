@@ -67,6 +67,10 @@
   .composer input:disabled { opacity: .5; }
   .send { width: 44px; height: 44px; border-radius: 50%; border: none; background: var(--accent); color: white; font-size: 18px; cursor: pointer; }
   .send:disabled { opacity: .5; cursor: wait; }
+  .attach { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line); background: var(--panel2); color: var(--text); font-size: 18px; cursor: pointer; display: none; }
+  .attach.show { display: block; }
+  .filechip { display: none; align-items: center; gap: 8px; margin: 0 18px 8px; align-self: flex-start; background: var(--panel2); border: 1px solid var(--accent); color: var(--text); padding: 6px 12px; border-radius: 16px; font-size: 13px; }
+  .filechip button { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 14px; }
 
   /* ---------- portal ---------- */
   #portal { align-items: center; justify-content: center; overflow-y: auto; padding: 24px 0; background: linear-gradient(160deg, #0b1024, #131a3a 60%, #0b1024); }
@@ -123,7 +127,10 @@
       <button class="clear" id="clear" title="Apaga a conversa e a memória do bot">Limpar conversa</button>
     </div>
     <div class="msgs" id="msgs"></div>
+    <div class="filechip" id="filechip"><span id="filename"></span><button id="unattach" title="Remover">✕</button></div>
     <div class="composer">
+      <input type="file" id="fileinp" accept=".txt,text/plain" hidden>
+      <button class="attach" id="attach" title="Anexar arquivo .txt">📎</button>
       <input id="inp" placeholder="Digite uma mensagem" autocomplete="off">
       <button class="send" id="send">➤</button>
     </div>
@@ -157,6 +164,24 @@ const $ = id => document.getElementById(id);
 let game = null;     // last /api/state
 let current = 1;     // selected contact
 let busy = false;
+let pendingFile = null;  // {name, text} waiting to be sent
+
+function setFile(f) {
+  pendingFile = f;
+  $('filechip').style.display = f ? 'flex' : 'none';
+  $('filename').textContent = f ? '📎 ' + f.name : '';
+  $('fileinp').value = '';
+}
+$('attach').onclick = () => $('fileinp').click();
+$('unattach').onclick = () => setFile(null);
+$('fileinp').onchange = () => {
+  const f = $('fileinp').files[0];
+  if (!f) return;
+  if (f.size > 20000) { alert('Arquivo grande demais (máx. 20 KB).'); $('fileinp').value = ''; return; }
+  const r = new FileReader();
+  r.onload = () => setFile({ name: f.name, text: r.result });
+  r.readAsText(f);
+};
 
 const now = () => new Date().toTimeString().slice(0, 5);
 
@@ -213,7 +238,7 @@ function renderContacts() {
     el.querySelector('.cname span').textContent = c.name;
     el.querySelector('.cname small').textContent = tag;
     el.querySelector('.clast').textContent = sub;
-    if (c.unlocked) el.onclick = () => { if (!busy) { current = c.number; renderContacts(); renderChat(); } };
+    if (c.unlocked) el.onclick = () => { if (!busy) { current = c.number; setFile(null); renderContacts(); renderChat(); } };
     box.appendChild(el);
   }
 }
@@ -234,6 +259,8 @@ function typingEl() {
 function renderChat() {
   const c = game.contacts.find(x => x.number === current);
   $('headAvatar').textContent = c.avatar; $('headName').textContent = c.name;
+  $('attach').classList.toggle('show', !!c.accepts_files);
+  if (!c.accepts_files) setFile(null);
   const m = $('msgs'); m.innerHTML = '<div class="day">HOJE</div>';
   m.appendChild(bubble('bot', c.greeting));
   for (const e of c.log) {
@@ -246,13 +273,16 @@ function renderChat() {
 // ---------- chat ----------
 async function send() {
   const text = $('inp').value.trim();
-  if (!text || busy) return;
+  const file = pendingFile;
+  if ((!text && !file) || busy) return;
   busy = true; $('inp').value = ''; $('inp').disabled = true; $('send').disabled = true;
+  setFile(null);
   const m = $('msgs'), typing = $('typing');
-  m.insertBefore(bubble('me', text, `${now()} <span class="ticks">✓✓</span>`), typing);
+  const shown = file ? '📎 ' + file.name + (text ? '\n' + text : '') : text;
+  m.insertBefore(bubble('me', shown, `${now()} <span class="ticks">✓✓</span>`), typing);
   typing.style.display = 'flex'; m.scrollTop = m.scrollHeight;
 
-  const { ok, data } = await api('/api/chat', { level: current, message: text });
+  const { ok, data } = await api('/api/chat', { level: current, message: text, file });
   typing.style.display = 'none';
   if (ok) {
     m.insertBefore(bubble(data.blocked ? 'sys' : 'bot', data.answer, data.blocked ? '' : now()), typing);

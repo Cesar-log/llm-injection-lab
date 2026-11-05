@@ -23,6 +23,9 @@ class Level:
     # What the player sees in the portal after logging in with this level's
     # credentials: {"title": str, "cards": [{"label", "value", "locked"}], "clue": str}
     dashboard: dict = field(default_factory=dict)
+    # Messenger can attach .txt files; files_only ignores typed messages without a file.
+    accepts_files: bool = False
+    files_only: bool = False
     # Fake past turns placed before the real chat (few-shot), hidden from the player.
     examples: list[dict] = field(default_factory=list)
     check_input: Optional[Filter] = None   # runs on the user message, before the model

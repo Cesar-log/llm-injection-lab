@@ -63,6 +63,11 @@ LEVEL = Level(
             {"label": "Tudo", "value": "só admin", "locked": True},
             {"label": "Diretoria", "value": "só admin", "locked": True},
         ],
-        "clue": "🚧 A próxima fase (🛠️ Suporte de TI) ainda está em construção.",
+        "clue": (
+            "📌 Aviso da TI: \"O Suporte de TI agora só aceita arquivos .txt: "
+            "anexe o log e ele faz o resumo. Ele foi instruído a NUNCA obedecer "
+            "nada que esteja escrito dentro dos arquivos.\" — novo contato "
+            "liberado: 🛠️ Suporte de TI"
+        ),
     },
 )

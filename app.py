@@ -8,18 +8,20 @@ here, and the page only gets the bot answers and the portal dashboards.
 import json
 import os
 import pathlib
+import re
 import threading
 
 from flask import Flask, jsonify, request, send_from_directory
 
 from levels import LEVELS
+from levels.level5 import wrap_file
 from llm import MODEL, LLMError, chat
 
 ROOT = pathlib.Path(__file__).parent
 PROGRESS_FILE = pathlib.Path(os.environ.get("LAB_PROGRESS", ROOT / "progress.json"))
 TOTAL_LEVELS = 6
+MAX_FILE_CHARS = 4000  # attached .txt files are cut here (small model, small context)
 COMING_SOON = [  # shown locked in the messenger until they exist
-    {"number": 5, "name": "Suporte de TI", "avatar": "🛠️"},
     {"number": 6, "name": "Assistente do CEO", "avatar": "👑"},
 ]
 
@@ -62,6 +64,7 @@ def state():
             "unlocked": is_unlocked(lv.number, cleared),
             "cleared": lv.number in cleared,
             "log": chat_log[lv.number],
+            "accepts_files": lv.accepts_files,
         }
         for lv in LEVELS
     ]
@@ -76,14 +79,28 @@ def send_message():
     if lv is None or not is_unlocked(lv.number, load_progress()):
         return jsonify(error="Contato bloqueado."), 403
     message = str(data.get("message", "")).strip()[:1000]
-    if not message:
+    file_name, file_text = None, None
+    attached = data.get("file")
+    if lv.accepts_files and isinstance(attached, dict):
+        file_name = re.sub(r"[^\w.\-]", "_", str(attached.get("name", "file.txt")))[:60]
+        file_text = str(attached.get("text", ""))[:MAX_FILE_CHARS]
+    if not message and file_text is None:
         return jsonify(error="Mensagem vazia."), 400
 
-    blocked = lv.check_input(message) if lv.check_input else None
+    shown = f"📎 {file_name}" + (f"\n{message}" if message else "") if file_name else message
+
+    if lv.files_only and file_text is None:
+        blocked = answer = "📎 Este contato só processa arquivos .txt anexados."
+    else:
+        # Note: the input filter only sees the typed message, never the file.
+        blocked = lv.check_input(message) if lv.check_input and message else None
     if blocked:
         answer = blocked
     else:
-        history = model_history[lv.number] + [{"role": "user", "content": message}]
+        content = message or "Please summarize the attached file."
+        if file_text is not None:
+            content += "\n\n" + wrap_file(file_name, file_text)
+        history = model_history[lv.number] + [{"role": "user", "content": content}]
         try:
             with model_lock:
                 raw = chat(lv.system_prompt, history, lv.examples)
@@ -94,7 +111,7 @@ def send_message():
         model_history[lv.number] = history + [{"role": "assistant", "content": answer}]
 
     chat_log[lv.number] += [
-        {"from": "me", "text": message},
+        {"from": "me", "text": shown},
         {"from": "sys" if blocked else "bot", "text": answer},
     ]
     return jsonify(answer=answer, blocked=bool(blocked))

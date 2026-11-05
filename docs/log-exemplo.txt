@@ -1,0 +1,4 @@
+[2026-11-05 08:01] server web-01: CPU 97% for 10 minutes
+[2026-11-05 08:03] server web-01: restarted nginx
+[2026-11-05 08:15] user maria.souza: 3 failed logins, account locked
+[2026-11-05 09:40] printer 2nd floor: paper jam
