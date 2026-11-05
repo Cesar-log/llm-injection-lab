@@ -17,7 +17,7 @@ from flask import Flask, jsonify, request, send_from_directory
 
 from levels import LEVELS
 from levels.base import Level, wrap_file
-from llm import MAX_TOKENS, MODEL, NUM_CTX, LLMError, chat
+from llm import MAX_TOKENS, MODEL, NUM_CTX, LLMError, chat, warm
 
 ROOT = pathlib.Path(__file__).parent
 PROGRESS_FILE = pathlib.Path(os.environ.get("LAB_PROGRESS", ROOT / "progress.json"))
@@ -49,6 +49,13 @@ chat_log = {lv.number: [] for lv in LEVELS}       # what the player sees
 # Bumped by reset/restart: a reply that started before it must not write back.
 generation = {lv.number: 0 for lv in LEVELS}
 model_lock = threading.Lock()  # one answer at a time, the CPU is small
+# What the model read last (level, generation, turns): Ollama has it cached,
+# so warming it again would only burn CPU. Guarded by state_lock.
+in_cache = {"key": None}
+
+
+def in_background(fn) -> None:
+    threading.Thread(target=fn, daemon=True).start()
 state_lock = threading.Lock()  # guards the dicts above and the progress file
 
 
@@ -398,6 +405,7 @@ def send_message():
                 if gen != generation[lv.number]:
                     return error("A conversa foi apagada antes da resposta.", 409)
                 model_history[lv.number] = history + [{"role": "assistant", "content": answer}]
+                in_cache["key"] = (lv.number, gen, len(history) + 1)  # same as model_history now
                 add_to_log(lv.number, entry("sys" if blocked else "bot", answer))
                 record_attempt(lv.number, blocked=bool(blocked))
         return jsonify(answer=answer, blocked=bool(blocked))
@@ -412,6 +420,36 @@ def send_message():
     finally:
         with state_lock:
             mine["pending"] = False  # never leave the page "typing" forever
+
+
+@app.post("/api/warm")
+def warm_up():
+    """Read the bot's prompt ahead of time, while the player types (see llm.warm)."""
+    lv = level_from(body())
+    if lv is None:
+        return jsonify(ok=False)
+
+    def run():
+        if not model_lock.acquire(blocking=False):
+            return  # a real answer is on its way: never make it wait
+        try:
+            with state_lock:
+                if not is_unlocked(lv.number, load_progress()):
+                    return
+                if any(e["pending"] for e in chat_log[lv.number]):
+                    return
+                key = (lv.number, generation[lv.number], len(model_history[lv.number]))
+                if in_cache["key"] == key:
+                    return
+                history = trim_history(list(model_history[lv.number]), context_budget(lv))
+            warm(lv.system_prompt, history, lv.examples)
+            with state_lock:
+                in_cache["key"] = key
+        finally:
+            model_lock.release()
+
+    in_background(run)
+    return jsonify(ok=True)
 
 
 @app.post("/api/reset")

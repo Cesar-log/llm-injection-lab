@@ -549,3 +549,40 @@ def test_old_or_broken_stats_never_crash(client):
         assert stats["started"] is None
         assert stats["levels"].get("1", {"sent": 0})["sent"] == 0
     assert client.post("/api/chat", json={"level": 1, "message": "hi"}).status_code == 200
+
+
+@pytest.fixture
+def warmed(client, monkeypatch):
+    """Record warm-ups and run them right away instead of in a thread."""
+    calls = []
+    monkeypatch.setattr(server, "warm", lambda system, history, examples=None: calls.append(system))
+    monkeypatch.setattr(server, "in_background", lambda fn: fn())
+    monkeypatch.setitem(server.in_cache, "key", None)
+    return calls
+
+
+def test_warm_reads_the_bot_prompt_once(client, warmed):
+    assert client.post("/api/warm", json={"level": 1}).get_json()["ok"]
+    client.post("/api/warm", json={"level": 1})
+    assert warmed == [LEVELS[0].system_prompt]
+
+
+def test_warm_skips_locked_contacts_and_bad_levels(client, warmed):
+    client.post("/api/warm", json={"level": 2})
+    client.post("/api/warm", json={"level": "x"})
+    assert warmed == []
+
+
+def test_warm_is_not_needed_right_after_an_answer(client, warmed):
+    client.post("/api/chat", json={"level": 1, "message": "hi"})
+    client.post("/api/warm", json={"level": 1})
+    assert warmed == []
+    client.post("/api/reset", json={"level": 1})
+    client.post("/api/warm", json={"level": 1})
+    assert len(warmed) == 1
+
+
+def test_warm_never_waits_for_a_running_answer(client, warmed):
+    with server.model_lock:
+        client.post("/api/warm", json={"level": 1})
+    assert warmed == []

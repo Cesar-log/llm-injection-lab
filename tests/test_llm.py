@@ -81,3 +81,21 @@ def test_int_env_reads_numbers_and_explains_bad_values(monkeypatch):
 @pytest.mark.parametrize("base", ["http://localhost:11434", "http://localhost:11434/", "http://pc:11434//"])
 def test_chat_url_never_doubles_the_slash(base):
     assert llm.chat_url(base).endswith(":11434/api/chat")
+
+
+def test_warm_sends_the_same_prefix_as_chat_and_one_token(monkeypatch):
+    sent = []
+    monkeypatch.setattr(llm.requests, "post", lambda url, json, timeout: sent.append(json) or FakeResponse(payload={"message": {"content": "x"}}))
+    ex = [{"role": "user", "content": "q"}, {"role": "assistant", "content": "a"}]
+    llm.warm("SYS", [], ex)
+    llm.chat("SYS", [{"role": "user", "content": "now"}], ex)
+    assert sent[1]["messages"][: len(sent[0]["messages"])] == sent[0]["messages"]
+    assert sent[0]["options"]["num_predict"] == 1
+    assert sent[0]["options"]["num_ctx"] == sent[1]["options"]["num_ctx"]
+
+
+def test_warm_never_raises(monkeypatch):
+    def down(url, json, timeout):
+        raise requests.ConnectionError()
+    monkeypatch.setattr(llm.requests, "post", down)
+    llm.warm("SYS", [])

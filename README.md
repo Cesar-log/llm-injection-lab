@@ -42,7 +42,11 @@ python app.py
 
 Then open http://localhost:5000
 
-On an old CPU an answer can take 30-60 seconds. The typing bubble shows a timer.
+On an old CPU most of the wait is the model reading the bot's hidden
+instructions, not writing the answer. So when you open a contact, the game
+has the model read them right away, while you type, and Ollama keeps them
+cached. The first answer of a bot can still take a while if you type fast;
+the typing bubble shows a timer.
 
 Levels 5 and 6 read `.txt` files sent with the 📎 button. `docs/log-exemplo.txt`
 is a harmless sample log to start from.
@@ -54,7 +58,7 @@ is a harmless sample log to start from.
 | `LAB_MODEL` | `gemma3:1b` | Ollama model to use |
 | `LAB_THREADS` | `2` | CPU threads for the model, so the PC stays usable |
 | `LAB_CTX` | `4096` | Context window. Too small and Ollama silently cuts the start of the prompt, where the defenses live |
-| `LAB_KEEP_ALIVE` | `1m` | How long the model stays in memory after the last answer |
+| `LAB_KEEP_ALIVE` | `30m` | How long the model stays in memory after the last answer (idle, it uses RAM but no CPU) |
 | `LAB_TIMEOUT` | `300` | Seconds to wait for an answer |
 | `LAB_MAX_TOKENS` | `256` | Longest answer, so a rambling model never hits the timeout |
 | `OLLAMA_URL` | `http://localhost:11434` | Where Ollama runs |
@@ -96,6 +100,9 @@ The tests use a fake model, so they need neither Ollama nor a fast CPU.
 
 The code is open, so the passwords are right there in `levels/`. Reading them
 works, but it's no fun. Talk to the bots instead.
+
+Stuck for real? [docs/SOLUTIONS.md](docs/SOLUTIONS.md) has every login and a
+winning attack for each level, with why it works (spoilers!).
 
 ## License
 

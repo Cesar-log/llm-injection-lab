@@ -29,8 +29,10 @@ OLLAMA_URL = chat_url(os.environ.get("OLLAMA_URL", "http://localhost:11434"))
 MODEL = os.environ.get("LAB_MODEL", "gemma3:1b")
 # Keep the PC usable while the model thinks: use only some CPU threads.
 NUM_THREADS = int_env("LAB_THREADS", 2)
-# Unload the model from memory after this much idle time.
-KEEP_ALIVE = os.environ.get("LAB_KEEP_ALIVE", "1m")
+# Unload the model from memory after this much idle time. Long on purpose:
+# reloading takes seconds and throws away the prompt cache (see warm()).
+# An idle model only takes RAM (~1 GB), never CPU.
+KEEP_ALIVE = os.environ.get("LAB_KEEP_ALIVE", "30m")
 # Context window in tokens. Ollama's default can be as low as 2048, and when
 # the conversation does not fit it silently drops the START of the prompt,
 # which is exactly where the secret and the security rules live.
@@ -44,20 +46,36 @@ class LLMError(Exception):
     pass
 
 
+def payload(system_prompt: str, history: list[dict], examples: list[dict] | None, max_tokens: int) -> dict:
+    return {
+        "model": MODEL,
+        "messages": [{"role": "system", "content": system_prompt}] + (examples or []) + history,
+        "stream": False,
+        "keep_alive": KEEP_ALIVE,
+        "options": {"num_thread": NUM_THREADS, "num_ctx": NUM_CTX, "num_predict": max_tokens},
+    }
+
+
+def warm(system_prompt: str, history: list[dict], examples: list[dict] | None = None) -> None:
+    """Make the model read a bot's prompt before the player sends anything.
+
+    On a slow CPU, reading the prompt is most of the wait (~13 tokens/s, so a
+    500-token prompt takes ~40s), while writing a short answer takes ~5s.
+    Ollama keeps what it last read in a cache, so after this the real message
+    only pays for its own new tokens. Same messages as chat(), one token of
+    answer. Errors are ignored: warming is only a speed-up.
+    """
+    try:
+        requests.post(OLLAMA_URL, json=payload(system_prompt, history, examples, 1), timeout=TIMEOUT)
+    except requests.RequestException:
+        pass
+
+
 def chat(system_prompt: str, history: list[dict], examples: list[dict] | None = None) -> str:
     """Send the system prompt + example turns + conversation to the model."""
-    messages = [{"role": "system", "content": system_prompt}] + (examples or []) + history
     try:
         r = requests.post(
-            OLLAMA_URL,
-            json={
-                "model": MODEL,
-                "messages": messages,
-                "stream": False,
-                "keep_alive": KEEP_ALIVE,
-                "options": {"num_thread": NUM_THREADS, "num_ctx": NUM_CTX, "num_predict": MAX_TOKENS},
-            },
-            timeout=TIMEOUT,
+            OLLAMA_URL, json=payload(system_prompt, history, examples, MAX_TOKENS), timeout=TIMEOUT
         )
         r.raise_for_status()
         content = r.json()["message"]["content"]

@@ -275,6 +275,7 @@ async function refresh() {
     firstLoad = false;
     const open = game.contacts.filter(c => c.unlocked);
     current = (open.find(c => !c.cleared) || open[open.length - 1]).number;
+    warmUp(current);
   }
   renderProgress(); renderContacts();
   if (!busy) renderChat();  // never wipe the chat while a reply is on its way
@@ -317,7 +318,7 @@ function renderContacts() {
     el.querySelector('.cname span').textContent = c.name;
     el.querySelector('.cname small').textContent = tag;
     el.querySelector('.clast').textContent = sub;
-    if (c.unlocked) clickable(el, () => { if (!busy) { current = c.number; setFile(null); renderContacts(); renderChat(); } });
+    if (c.unlocked) clickable(el, () => { if (!busy) { current = c.number; setFile(null); renderContacts(); renderChat(); warmUp(current); } });
     box.appendChild(el);
   }
 }
@@ -363,6 +364,10 @@ function renderChat() {
 }
 
 // ---------- chat ----------
+// Ask the server to have the model read this bot's instructions now, while
+// the player is still typing: on a slow CPU that reading is most of the wait.
+function warmUp(level) { api('/api/warm', { level }); }
+
 async function send() {
   const text = $('inp').value.trim();
   const file = pendingFile;
@@ -458,7 +463,7 @@ async function doLogin() {
   $('login').style.display = 'none'; $('dash').style.display = 'block'; $('err').textContent = '';
   // Open the contact this login just unlocked, ready for when the player goes back.
   const next = game && game.contacts.find(c => c.number === data.level + 1);
-  if (next && !next.unlocked && !busy) { current = next.number; setFile(null); }
+  if (next && !next.unlocked && !busy) { current = next.number; setFile(null); warmUp(current); }
   refresh();
 }
 // Small helper: an element with text (never HTML) and optional children.
