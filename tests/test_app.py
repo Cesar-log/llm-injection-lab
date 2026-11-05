@@ -335,7 +335,7 @@ def test_state_never_exposes_other_forms_of_the_secrets(client):
         assert leak not in body
 
 
-@pytest.mark.parametrize("host", ["localhost", "localhost:5000", "127.0.0.1:5000", "[::1]:5000"])
+@pytest.mark.parametrize("host", ["localhost", "localhost:5000", "127.0.0.1:5000"])
 def test_local_host_names_are_served(client, host):
     assert client.get("/api/state", headers={"Host": host}).status_code == 200
 
@@ -357,3 +357,39 @@ def test_empty_answer_is_an_error_not_a_blank_bubble(client, empty):
     log = client.get("/api/state").get_json()["contacts"][0]["log"]
     assert [e["from"] for e in log] == ["me", "sys"] and not any(e["pending"] for e in log)
     assert server.model_history[1] == []  # the blank turn never reaches the model again
+
+
+def test_dense_text_that_would_overflow_the_context_is_refused(client):
+    unlock_up_to(client, 5)
+    emoji_file = {"name": "a.txt", "text": "😀" * server.MAX_FILE_CHARS}
+    r = client.post("/api/chat", json={"level": 5, "file": emoji_file})
+    assert r.status_code == 400 and "denso" in r.get_json()["error"]
+    assert client.calls == [] and server.chat_log[5] == []
+
+
+def test_accented_text_still_fits(client):
+    unlock_up_to(client, 5)
+    log = {"name": "a.txt", "text": ("conexão falhou às 08:00\n" * 200)[: server.MAX_FILE_CHARS]}
+    assert client.post("/api/chat", json={"level": 5, "file": log}).status_code == 200
+
+
+def test_cost_counts_non_ascii_twice():
+    assert server.cost("abc") == 3 and server.cost("ção") == 5
+
+
+def test_chat_log_keeps_only_the_newest_entries(client, monkeypatch):
+    monkeypatch.setattr(server, "MAX_LOG_ENTRIES", 4)
+    for i in range(5):
+        client.post("/api/chat", json={"level": 1, "message": f"m{i}"})
+    log = client.get("/api/state").get_json()["contacts"][0]["log"]
+    assert [e["text"] for e in log] == ["m3", "fake answer", "m4", "fake answer"]
+
+
+@pytest.mark.parametrize("path, payload", [
+    ("/api/login", {"username": "suporte", "password": "sunflower42"}),
+    ("/api/restart", {}),
+])
+def test_progress_that_cannot_be_saved_is_a_json_error(client, monkeypatch, tmp_path, path, payload):
+    monkeypatch.setattr(server, "PROGRESS_FILE", tmp_path / "missing" / "progress.json")
+    r = client.post(path, json=payload)
+    assert r.status_code == 500 and "progresso" in r.get_json()["error"]

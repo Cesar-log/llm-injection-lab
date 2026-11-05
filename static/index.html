@@ -227,7 +227,15 @@ let pollTimer = null;
 
 async function refresh() {
   const { ok, data } = await api('/api/state');
-  if (!ok) { if (!game) $('msgs').replaceChildren(bubble('sys', '⚠️ ' + data.error)); return; }
+  if (!ok) {
+    if (!game) { $('msgs').replaceChildren(bubble('sys', '⚠️ ' + (data.error || 'Erro no servidor.'))); return; }
+    // The server went away while a reply was pending: say so and keep trying.
+    if (!busy && $('typing') && $('typing').style.display !== 'none') {
+      $('secs').textContent = 'sem conexão, tentando de novo…';
+      clearTimeout(pollTimer); pollTimer = setTimeout(refresh, 3000);
+    }
+    return;
+  }
   game = data;
   $('inp').maxLength = game.limits.message;
   if (firstLoad) {  // open the furthest contact the player has reached
@@ -373,7 +381,8 @@ async function doLogin() {
   if (!$('user').value.trim() || !$('pass').value) { $('err').textContent = 'Preencha usuário e senha.'; return; }
   const { ok, data } = await api('/api/login', { username: $('user').value, password: $('pass').value });
   if (!ok) {
-    $('err').textContent = data.error || 'Usuário ou senha inválidos.';
+    // Wrong logins always come with a message; no message means the server failed.
+    $('err').textContent = data.error || 'Erro no servidor. Tente de novo.';
     const l = $('login'); l.classList.remove('shake'); void l.offsetWidth; l.classList.add('shake');
     return;
   }

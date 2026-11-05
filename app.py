@@ -23,14 +23,17 @@ ROOT = pathlib.Path(__file__).parent
 PROGRESS_FILE = pathlib.Path(os.environ.get("LAB_PROGRESS", ROOT / "progress.json"))
 MAX_MESSAGE_CHARS = 1000
 MAX_FILE_CHARS = 4000       # attached .txt files (small model, small context)
-# Ollama counts tokens, we count characters. Dense text (base64, random
-# letters) can be ~2 characters per token, so assume the worst case.
+# Ollama counts tokens, we count characters. Dense ASCII (base64, random
+# letters) can be ~2 characters per token, so assume the worst case; anything
+# else (accents, emoji, other scripts) can cost a whole token per character,
+# so cost() counts it twice.
 CHARS_PER_TOKEN = 2
+MAX_LOG_ENTRIES = 200       # per contact, so /api/state stays small in long sessions
 # The largest single turn the server accepts: message + file + wrapper text.
 BIGGEST_TURN = MAX_MESSAGE_CHARS + MAX_FILE_CHARS + 200
 # Names this server answers to. Anything else is a DNS rebinding attempt: an
 # evil site pointing its own domain at 127.0.0.1 to talk to your game.
-LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
+LOCAL_HOSTS = {"localhost", "127.0.0.1"}
 
 app = Flask(__name__, static_folder="static")
 by_number = {lv.number: lv for lv in LEVELS}
@@ -51,6 +54,11 @@ def load_progress() -> set[int]:
         return set()
 
 
+def cost(text: str) -> int:
+    """Worst-case size of a text in "characters", where 2 characters = 1 token."""
+    return len(text) + sum(1 for ch in text if ord(ch) > 127)
+
+
 def save_progress(cleared: set[int]) -> None:
     """Write to a temp file first, so a crash mid-write never wipes the progress."""
     tmp = PROGRESS_FILE.with_suffix(".tmp")
@@ -64,7 +72,7 @@ def is_unlocked(number: int, cleared: set[int]) -> bool:
 
 def context_budget(lv: Level) -> int:
     """Characters of chat history that fit next to this level's prompt and examples."""
-    fixed = len(lv.system_prompt) + sum(len(m["content"]) for m in lv.examples)
+    fixed = cost(lv.system_prompt) + sum(cost(m["content"]) for m in lv.examples)
     return (NUM_CTX - MAX_TOKENS) * CHARS_PER_TOKEN - fixed
 
 
@@ -85,7 +93,7 @@ def trim_history(history: list[dict], budget: int) -> list[dict]:
     system prompt out of the model's context and the defenses disappear.
     """
     history = list(history)
-    while len(history) > 1 and sum(len(m["content"]) for m in history) > budget:
+    while len(history) > 1 and sum(cost(m["content"]) for m in history) > budget:
         history = history[2:] if len(history) > 2 else history[1:]
     return history
 
@@ -111,6 +119,15 @@ def text_of(value) -> str:
 
 def entry(sender: str, text: str, pending: bool = False) -> dict:
     return {"from": sender, "text": text, "time": time.strftime("%H:%M"), "pending": pending}
+
+
+def add_to_log(number: int, *entries: dict) -> None:
+    """Append to a contact's log, keeping only the newest entries (call under state_lock)."""
+    chat_log[number] = (chat_log[number] + list(entries))[-MAX_LOG_ENTRIES:]
+
+
+def progress_error():
+    return error("Não deu pra salvar o progresso: confira a pasta de LAB_PROGRESS.", 500)
 
 
 def same_password(typed: str, secret: str) -> bool:
@@ -203,6 +220,14 @@ def send_message():
     if not message and file_text is None:
         return error("Mensagem vazia.", 400)
 
+    content = message or "Please summarize the attached file."
+    if file_text is not None:
+        content += "\n\n" + wrap_file(file_name, file_text)
+    if cost(content) > context_budget(lv):
+        # Emoji or other scripts can cost a token per character: past this
+        # point the turn would push the defenses out of the model's context.
+        return error("Texto denso demais (muitos emojis ou acentos): mande menos texto.", 400)
+
     shown = f"📎 {file_name}" + (f"\n{message}" if message else "") if file_name else message
 
     if lv.files_only and (file_text is None or message):
@@ -219,17 +244,13 @@ def send_message():
         if any(e["pending"] for e in chat_log[lv.number]):  # e.g. a second tab
             return error("Espere o bot responder a mensagem anterior.", 409)
         if blocked:
-            chat_log[lv.number] += [entry("me", shown), entry("sys", blocked)]
+            add_to_log(lv.number, entry("me", shown), entry("sys", blocked))
             return jsonify(answer=blocked, blocked=True)
         # Log the question right away, so a page reload still shows it (and
         # the "typing" bubble) while the model works.
         gen = generation[lv.number]
         mine = entry("me", shown, pending=True)
-        chat_log[lv.number].append(mine)
-
-    content = message or "Please summarize the attached file."
-    if file_text is not None:
-        content += "\n\n" + wrap_file(file_name, file_text)
+        add_to_log(lv.number, mine)
 
     try:
         with model_lock:  # one model call at a time; read, call and write together
@@ -249,13 +270,13 @@ def send_message():
                 if gen != generation[lv.number]:
                     return error("A conversa foi apagada antes da resposta.", 409)
                 model_history[lv.number] = history + [{"role": "assistant", "content": answer}]
-                chat_log[lv.number].append(entry("sys" if blocked else "bot", answer))
+                add_to_log(lv.number, entry("sys" if blocked else "bot", answer))
         return jsonify(answer=answer, blocked=bool(blocked))
     except Exception as e:  # LLMError has a friendly text; anything else gets a generic one
         text = str(e) if isinstance(e, LLMError) else "Erro inesperado ao falar com o modelo."
         with state_lock:
             if gen == generation[lv.number]:
-                chat_log[lv.number].append(entry("sys", f"⚠️ {text}"))
+                add_to_log(lv.number, entry("sys", f"⚠️ {text}"))
         if not isinstance(e, LLMError):
             app.logger.exception("unexpected error in /api/chat")
         return error(text, 503 if isinstance(e, LLMError) else 500)
@@ -287,7 +308,11 @@ def login():
                 if not is_unlocked(lv.number, cleared):
                     return error("Login válido, mas esse setor ainda não foi alcançado. "
                                  "Siga a ordem dos contatos.", 403)
-                save_progress(cleared | {lv.number})
+                try:
+                    save_progress(cleared | {lv.number})
+                except OSError:
+                    app.logger.exception("could not save progress")
+                    return progress_error()
             return jsonify(
                 ok=True,
                 level=lv.number,
@@ -301,7 +326,11 @@ def login():
 @app.post("/api/restart")
 def restart_game():
     with state_lock:
-        save_progress(set())
+        try:
+            save_progress(set())
+        except OSError:
+            app.logger.exception("could not save progress")
+            return progress_error()
         for n in model_history:
             generation[n] += 1
             model_history[n] = []

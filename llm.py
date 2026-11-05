@@ -62,6 +62,12 @@ def chat(system_prompt: str, history: list[dict], examples: list[dict] | None = 
         except (ValueError, AttributeError):
             detail = ""
         raise LLMError(f"Erro do Ollama: {detail or r.status_code} (você rodou `ollama pull {MODEL}`?)")
+    # requests.JSONDecodeError is also a RequestException, but a body that is
+    # not JSON is a bad answer, not a connection problem: catch it first.
+    # (InvalidSchema/InvalidURL are ValueErrors too, so plain ValueError must
+    # stay after RequestException.)
+    except requests.JSONDecodeError:
+        raise LLMError("O Ollama devolveu uma resposta inesperada.")
     except requests.RequestException as e:  # bad OLLAMA_URL, broken connection...
         raise LLMError(f"Não deu pra falar com o Ollama em {OLLAMA_URL}: {type(e).__name__}.")
     except (ValueError, KeyError, TypeError):

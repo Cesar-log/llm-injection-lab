@@ -14,8 +14,8 @@ class FakeResponse:
             raise requests.HTTPError(response=self)
 
     def json(self):
-        if self._payload is None:
-            raise ValueError("not json")
+        if self._payload is None:  # what requests >= 2.27 really raises
+            raise requests.JSONDecodeError("not json", "<html>", 0)
         return self._payload
 
 
