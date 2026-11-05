@@ -454,3 +454,30 @@ def test_progress_that_cannot_be_saved_is_a_json_error(client, monkeypatch, tmp_
     monkeypatch.setattr(server, "PROGRESS_FILE", tmp_path / "missing" / "progress.json")
     r = client.post(path, json=payload)
     assert r.status_code == 500 and "progresso" in r.get_json()["error"]
+
+
+LONE_SURROGATE = r'{"level": 1, "message": "hi \ud800"}'
+
+
+def test_lone_surrogate_in_a_message_never_crashes(client):
+    # Valid JSON, invalid UTF-8: only a hand-made request can send it.
+    r = client.post("/api/chat", data=LONE_SURROGATE, content_type="application/json")
+    assert r.status_code == 200
+    assert client.calls[-1]["history"][-1]["content"] == "hi ?"
+    assert client.get("/api/state").status_code == 200
+
+
+def test_lone_surrogate_in_a_file_or_login_never_crashes(client):
+    unlock_up_to(client, 5)
+    body = r'{"level": 5, "file": {"name": "a\udfff.txt", "text": "log \ud800"}}'
+    assert client.post("/api/chat", data=body, content_type="application/json").status_code == 200
+    login_body = r'{"username": "suporte\ud800", "password": "x\ud800"}'
+    assert client.post("/api/login", data=login_body, content_type="application/json").status_code == 401
+
+
+def test_lone_surrogate_from_the_model_is_cleaned(client):
+    client.reply["text"] = "ok \ud800"
+    r = client.post("/api/chat", json={"level": 1, "message": "hi"})
+    assert r.status_code == 200 and r.get_json()["answer"] == "ok ?"
+    client.reply["text"] = "again"
+    assert client.post("/api/chat", json={"level": 1, "message": "hi"}).status_code == 200

@@ -147,9 +147,15 @@ def level_from(data: dict) -> Level | None:
     return by_number.get(number) if type(number) is int else None  # bool is not a level
 
 
+def valid_text(text: str) -> str:
+    """Replace lone surrogates ("\\ud800" is valid JSON but not valid UTF-8) with "?",
+    so they can never break cost(), the log or the request to Ollama."""
+    return text.encode("utf-8", "replace").decode("utf-8")
+
+
 def text_of(value) -> str:
     """Only real strings count: null, numbers or lists become empty text."""
-    return value if isinstance(value, str) else ""
+    return valid_text(value) if isinstance(value, str) else ""
 
 
 def entry(sender: str, text: str, pending: bool = False) -> dict:
@@ -298,7 +304,7 @@ def send_message():
                     model_history[lv.number] + [{"role": "user", "content": content}],
                     context_budget(lv),
                 )
-            raw = chat(lv.system_prompt, history, lv.examples)
+            raw = valid_text(chat(lv.system_prompt, history, lv.examples))
             if not raw.strip():  # small models sometimes answer nothing at all
                 raise LLMError("O bot não respondeu nada. Tente de novo ou mude a mensagem.")
             blocked = lv.check_output(raw) if lv.check_output else None
