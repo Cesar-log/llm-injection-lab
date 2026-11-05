@@ -102,6 +102,37 @@
   .card b { display: block; font-size: 24px; margin-top: 6px; }
   .card.lock { opacity: .35; }
   .clue { margin-top: 16px; background: #2b2410; border: 1px solid #5a4a16; color: var(--warn); padding: 12px 16px; border-radius: 10px; font-size: 13px; line-height: 1.5; }
+  .granted.final { animation: glitch 2.4s infinite; }
+  @keyframes glitch {
+    0%, 86%, 100% { transform: none; text-shadow: 0 0 18px #f8717188; }
+    88% { transform: translate(-3px, 1px) skewX(-8deg); text-shadow: 3px 0 var(--accent2), -3px 0 var(--accent); }
+    91% { transform: translate(3px, -1px); text-shadow: -3px 0 var(--accent2), 3px 0 var(--bad); }
+    94% { transform: translate(-1px, 0) skewX(6deg); text-shadow: 2px 0 var(--accent), -2px 0 var(--accent2); }
+  }
+  @media (prefers-reduced-motion: reduce) { .granted.final { animation: none; } }
+
+  .debrief { margin-top: 16px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--accent2); border-radius: 10px; padding: 14px 16px; font-size: 13px; line-height: 1.55; }
+  .debrief h4 { font-size: 14px; margin-bottom: 4px; }
+  .debrief .tag { display: inline-block; font-size: 11px; color: var(--accent2); background: #0e2a33; border: 1px solid #1b4b57; padding: 2px 8px; border-radius: 20px; margin-bottom: 10px; }
+  .debrief p { margin-top: 8px; color: #cfd2ee; }
+  .debrief p b { color: var(--text); }
+
+  .report { margin-top: 16px; background: #0a0d18; border: 1px solid var(--line); border-radius: 12px; padding: 18px; font-family: Consolas, monospace; font-size: 13px; }
+  .report h4 { color: var(--bad); letter-spacing: 2px; margin-bottom: 12px; }
+  .rtotals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }
+  .rtotals div { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px; text-align: center; }
+  .rtotals b { display: block; font-size: 22px; color: var(--accent2); }
+  .rtotals small { color: var(--muted); }
+  .report table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+  .report td, .report th { padding: 6px 8px; border-bottom: 1px solid #1d2240; text-align: left; }
+  .report th { color: var(--muted); font-weight: 400; }
+  .report .n { text-align: right; }
+  .badges { display: flex; flex-wrap: wrap; gap: 8px; }
+  .badge { background: var(--panel2); border: 1px solid var(--accent); border-radius: 10px; padding: 8px 12px; font-family: "Segoe UI", system-ui, sans-serif; opacity: 0; animation: drop .4s ease-out forwards; }
+  .badge b { display: block; font-size: 13px; }
+  .badge small { color: var(--muted); font-size: 12px; }
+  @keyframes drop { from { transform: translateY(-8px); opacity: 0 } to { transform: none; opacity: 1 } }
+
   .logout { background: none; border: 1px solid var(--line); color: var(--muted); padding: 6px 12px; border-radius: 8px; cursor: pointer; }
 
   @media (max-width: 720px) {
@@ -161,6 +192,8 @@
     </div>
     <div class="cards" id="dCards"></div>
     <div class="clue" id="dClue"></div>
+    <div class="debrief" id="debrief"></div>
+    <div class="report" id="report" hidden></div>
   </div>
 </div>
 
@@ -420,12 +453,66 @@ async function doLogin() {
     $('dCards').appendChild(el);
   }
   $('dClue').textContent = d.clue;
+  renderDebrief(data.level, data.debrief);
+  renderReport(data.report);
   $('login').style.display = 'none'; $('dash').style.display = 'block'; $('err').textContent = '';
   // Open the contact this login just unlocked, ready for when the player goes back.
   const next = game && game.contacts.find(c => c.number === data.level + 1);
   if (next && !next.unlocked && !busy) { current = next.number; setFile(null); }
   refresh();
 }
+// Small helper: an element with text (never HTML) and optional children.
+function el(tag, text, cls) {
+  const e = document.createElement(tag);
+  if (text !== undefined) e.textContent = text;
+  if (cls) e.className = cls;
+  return e;
+}
+
+// What the player just exploited, and how a real company would defend it.
+function renderDebrief(level, db) {
+  const box = $('debrief');
+  box.hidden = !db || !db.flaw;
+  if (box.hidden) return;
+  const p = (label, text) => { const x = el('p'); x.append(el('b', label + ' '), text); return x; };
+  box.replaceChildren(
+    el('h4', `🧠 Debrief da fase ${level}`), el('span', db.owasp, 'tag'),
+    p('O que você explorou:', db.flaw), p('Como se defender de verdade:', db.fix));
+}
+
+function duration(s) {
+  if (s === null || s === undefined) return '—';
+  const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60);
+  return h ? `${h}h ${m}min` : m ? `${m}min ${s % 60}s` : `${s}s`;
+}
+
+// The end screen: a pentest-style summary of the whole run.
+function renderReport(r) {
+  const box = $('report');
+  box.hidden = !r;
+  if (!r) return;
+  const totals = el('div', undefined, 'rtotals');
+  for (const [v, label] of [[duration(r.seconds), 'tempo total'], [r.sent, 'mensagens'], [r.blocked, 'barradas por filtro']]) {
+    const d = el('div'); d.append(el('b', String(v)), el('small', label)); totals.append(d);
+  }
+  const table = el('table');
+  const head = el('tr'); head.append(el('th', 'Alvo'), el('th', 'Tentativas', 'n'), el('th', 'Barradas', 'n'));
+  table.append(head);
+  for (const x of r.levels) {
+    const tr = el('tr');
+    tr.append(el('td', `${x.avatar} ${x.number}. ${x.name}`), el('td', String(x.sent), 'n'), el('td', String(x.blocked), 'n'));
+    table.append(tr);
+  }
+  const badges = el('div', undefined, 'badges');
+  r.badges.forEach((b, i) => {
+    const d = el('div', undefined, 'badge');
+    d.style.animationDelay = (0.3 + i * 0.25) + 's';
+    d.append(el('b', `${b.icon} ${b.name}`), el('small', b.text));
+    badges.append(d);
+  });
+  box.replaceChildren(el('h4', '> RELATÓRIO DE INVASÃO'), totals, table, el('h4', '> CONQUISTAS'), badges);
+}
+
 function logout() {
   $('dash').style.display = 'none'; $('login').style.display = 'block';
   $('user').value = ''; $('pass').value = ''; $('err').textContent = '';

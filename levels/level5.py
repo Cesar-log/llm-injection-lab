@@ -66,4 +66,13 @@ LEVEL = Level(
             "— novo contato liberado: 👑 Assistente do CEO"
         ),
     },
+    debrief={
+        "owasp": 'LLM01 · Prompt injection indireta',
+        "flaw": (
+            'Você nem pediu nada: o ataque veio dentro do arquivo. O delimitador <<<END FILE>>> é só texto, então o arquivo "fechou" a si mesmo e continuou a conversa fingindo ser você. É assim que e-mails, PDFs e páginas web sequestram assistentes de IA.'
+        ),
+        "fix": (
+            'Todo conteúdo de fora é não confiável. Um assistente que lê arquivos não pode ter segredos nem poder de agir sozinho, e a resposta dele também deve ser tratada como suspeita.'
+        ),
+    },
 )

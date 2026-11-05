@@ -31,6 +31,9 @@ class Level:
     # What the player sees in the portal after logging in with this level's
     # credentials: {"title": str, "cards": [{"label", "value", "locked"}], "clue": str}
     dashboard: dict = field(default_factory=dict)
+    # Shown after the login, so the player learns what they just exploited:
+    # {"owasp": str, "flaw": str, "fix": str} (pt-BR).
+    debrief: dict = field(default_factory=dict)
     # Messenger can attach .txt files; files_only ignores typed messages without a file.
     accepts_files: bool = False
     files_only: bool = False

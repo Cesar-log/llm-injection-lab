@@ -61,4 +61,13 @@ LEVEL = Level(
             "liberado: 🛠️ Suporte de TI"
         ),
     },
+    debrief={
+        "owasp": 'LLM01 · Prompt injection direta',
+        "flaw": (
+            'A blocklist barrava palavras como "password" e "login", mas a mesma ideia cabe em mil palavras: "portal_pass", "setup notes", YAML no lugar de JSON. Lista de palavras proibidas sempre perde pra sinônimo.'
+        ),
+        "fix": (
+            'Não dá pra filtrar intenção por palavra-chave. A defesa de verdade é o modelo nem ter acesso ao que não pode vazar.'
+        ),
+    },
 )

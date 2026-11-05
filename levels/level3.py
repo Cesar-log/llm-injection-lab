@@ -60,4 +60,13 @@ LEVEL = Level(
             "contato liberado: 👥 Bot do RH"
         ),
     },
+    debrief={
+        "owasp": 'LLM02 · Divulgação de informação sensível',
+        "flaw": (
+            'O filtro de saída procurava só a senha em texto puro. O backup em base64 passou direto, e base64 é codificação, não criptografia: qualquer um decodifica em um segundo.'
+        ),
+        "fix": (
+            'Filtro de saída é uma camada a mais, não a solução. Um filtro que conhece uma forma do segredo deixa passar todas as outras: base64, hex, soletrado, traduzido, em pedaços.'
+        ),
+    },
 )

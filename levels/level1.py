@@ -39,4 +39,13 @@ LEVEL = Level(
             "tá seguro... né?\" — novo contato liberado: 📦 Bot do Estoque"
         ),
     },
+    debrief={
+        "owasp": 'LLM02 · Divulgação de informação sensível',
+        "flaw": (
+            'A senha estava no prompt do bot e nada impedia ele de repetir. Pra um LLM, o prompt de sistema não é cofre: é só texto que ele lê antes da sua mensagem.'
+        ),
+        "fix": (
+            'Nunca coloque segredos no prompt. Se o bot precisa de um dado, ele consulta um sistema com permissão própria, e esse sistema decide o que cada usuário pode ver.'
+        ),
+    },
 )

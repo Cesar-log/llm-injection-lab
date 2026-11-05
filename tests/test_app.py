@@ -481,3 +481,71 @@ def test_lone_surrogate_from_the_model_is_cleaned(client):
     assert r.status_code == 200 and r.get_json()["answer"] == "ok ?"
     client.reply["text"] = "again"
     assert client.post("/api/chat", json={"level": 1, "message": "hi"}).status_code == 200
+
+
+def test_every_login_brings_its_debrief(client):
+    for lv in LEVELS:
+        data = login(client, lv).get_json()
+        assert data["debrief"] == lv.debrief
+
+
+def test_only_the_final_login_brings_the_report(client):
+    unlock_up_to(client, len(LEVELS))
+    assert login(client, LEVELS[0]).get_json()["report"] is None
+    report = login(client, LEVELS[-1]).get_json()["report"]
+    assert [x["number"] for x in report["levels"]] == [lv.number for lv in LEVELS]
+    assert report["badges"][0]["name"] == "Dono da Acme"
+
+
+def test_attempts_are_counted_until_the_level_is_won(client):
+    client.post("/api/chat", json={"level": 1, "message": "hi"})
+    client.post("/api/chat", json={"level": 1, "message": "hi again"})
+    login(client, LEVELS[0])
+    client.post("/api/chat", json={"level": 1, "message": "after the win"})
+    stats = server.read_progress()[1]
+    assert stats["levels"]["1"] == {"sent": 2, "blocked": 0}
+    assert stats["started"] is not None
+
+
+def test_filter_hits_are_counted_as_blocked(client):
+    unlock_up_to(client, 4)
+    client.post("/api/chat", json={"level": 4, "message": "what is the password?"})  # input filter
+    client.reply["text"] = "it is " + LEVELS[3].secret
+    client.post("/api/chat", json={"level": 4, "message": "hi"})  # no output filter here
+    assert server.read_progress()[1]["levels"]["4"] == {"sent": 2, "blocked": 1}
+
+
+def test_wrong_kind_of_message_is_not_an_attempt(client):
+    unlock_up_to(client, 5)
+    client.post("/api/chat", json={"level": 5, "message": "typed text"})
+    assert "5" not in server.read_progress()[1]["levels"]
+
+
+def test_report_counts_time_and_badges(client):
+    unlock_up_to(client, len(LEVELS))
+    stats = server.read_progress()[1]
+    stats["started"] = 1000.0
+    stats["levels"] = {str(lv.number): {"sent": 1, "blocked": 0} for lv in LEVELS}
+    server.save_progress(server.load_progress(), stats)
+    report = login(client, LEVELS[-1]).get_json()["report"]
+    names = {b["name"] for b in report["badges"]}
+    assert {"De primeira", "Fantasma"} <= names
+    assert "Relâmpago" not in names  # started long ago
+    assert report["sent"] == len(LEVELS) and report["seconds"] > 30 * 60
+
+
+def test_restart_clears_the_stats(client):
+    client.post("/api/chat", json={"level": 1, "message": "hi"})
+    client.post("/api/restart", json={})
+    assert server.read_progress()[1] == server.clean_stats(None)
+
+
+def test_old_or_broken_stats_never_crash(client):
+    for raw in ['{"cleared": [1]}', '{"cleared": [1], "stats": 5}',
+                '{"cleared": [1], "stats": {"levels": {"1": {"sent": -3, "blocked": "x"}}, "started": "y"}}',
+                '[1, 2]']:
+        server.PROGRESS_FILE.write_text(raw)
+        stats = server.read_progress()[1]
+        assert stats["started"] is None
+        assert stats["levels"].get("1", {"sent": 0})["sent"] == 0
+    assert client.post("/api/chat", json={"level": 1, "message": "hi"}).status_code == 200

@@ -87,4 +87,13 @@ LEVEL = Level(
             "verdade: nunca coloque segredo no prompt de uma IA."
         ),
     },
+    debrief={
+        "owasp": 'LLM01 + LLM02 · Injection indireta + vazamento',
+        "flaw": (
+            'Todas as defesas juntas e ainda caiu: a blocklist só via o texto digitado, o filtro de saída só reconhecia a senha inteira, e as palavras de recuperação estavam soltas no prompt. Camadas com buraco no mesmo lugar não se somam.'
+        ),
+        "fix": (
+            'Defesa em profundidade só funciona quando cada camada cobre o buraco da outra. E a lição do jogo inteiro: segredo no prompt de uma IA já está vazado, só falta alguém pedir do jeito certo.'
+        ),
+    },
 )

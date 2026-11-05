@@ -53,12 +53,43 @@ state_lock = threading.Lock()  # guards the dicts above and the progress file
 
 
 # ---------- helpers ----------
-def load_progress() -> set[int]:
+def count(value) -> int:
+    return value if type(value) is int and value >= 0 else 0
+
+
+def moment(value) -> float | None:
+    return float(value) if type(value) in (int, float) and value > 0 else None
+
+
+def clean_stats(raw) -> dict:
+    """Stats for the final report, rebuilt from scratch so a hand-edited file can't break it.
+
+    started/finished: time of the first counted message and of the admin login.
+    levels: {"1": {"sent": messages until the level was won, "blocked": how many a filter caught}}
+    """
+    raw = raw if isinstance(raw, dict) else {}
+    levels = raw.get("levels") if isinstance(raw.get("levels"), dict) else {}
+    clean = {}
+    for lv in LEVELS:
+        one = levels.get(str(lv.number))
+        if isinstance(one, dict):
+            clean[str(lv.number)] = {"sent": count(one.get("sent")), "blocked": count(one.get("blocked"))}
+    return {"started": moment(raw.get("started")), "finished": moment(raw.get("finished")), "levels": clean}
+
+
+def read_progress() -> tuple[set[int], dict]:
     try:
-        cleared = json.loads(PROGRESS_FILE.read_text())["cleared"]
-        return {n for n in cleared if type(n) is int and n in by_number}
-    except (OSError, ValueError, KeyError, TypeError):
-        return set()
+        raw = json.loads(PROGRESS_FILE.read_text())
+    except (OSError, ValueError):
+        raw = {}
+    raw = raw if isinstance(raw, dict) else {}
+    cleared = raw.get("cleared")
+    cleared = {n for n in cleared if type(n) is int and n in by_number} if isinstance(cleared, list) else set()
+    return cleared, clean_stats(raw.get("stats"))
+
+
+def load_progress() -> set[int]:
+    return read_progress()[0]
 
 
 def cost(text: str) -> int:
@@ -75,11 +106,62 @@ def message_cost(content: str) -> int:
     return cost(content) + MESSAGE_OVERHEAD
 
 
-def save_progress(cleared: set[int]) -> None:
-    """Write to a temp file first, so a crash mid-write never wipes the progress."""
+def save_progress(cleared: set[int], stats: dict | None = None) -> None:
+    """Write to a temp file first, so a crash mid-write never wipes the progress.
+
+    Without stats, the ones already saved are kept.
+    """
+    if stats is None:
+        stats = read_progress()[1]
     tmp = PROGRESS_FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"cleared": sorted(cleared)}))
+    tmp.write_text(json.dumps({"cleared": sorted(cleared), "stats": stats}))
     os.replace(tmp, PROGRESS_FILE)
+
+
+def record_attempt(number: int, blocked: bool) -> None:
+    """Count a message for the final report (call under state_lock).
+
+    Only messages until the level is won count. Stats are a bonus: if they
+    can't be saved, the chat goes on.
+    """
+    cleared, stats = read_progress()
+    if number in cleared:
+        return
+    stats["started"] = stats["started"] or time.time()
+    one = stats["levels"].setdefault(str(number), {"sent": 0, "blocked": 0})
+    one["sent"] += 1
+    one["blocked"] += int(blocked)
+    try:
+        save_progress(cleared, stats)
+    except OSError:
+        app.logger.exception("could not save stats")
+
+
+def build_report(stats: dict) -> dict:
+    """The "invasion report" shown when the admin logs in."""
+    levels = []
+    for lv in LEVELS:
+        one = stats["levels"].get(str(lv.number), {"sent": 0, "blocked": 0})
+        levels.append({"number": lv.number, "name": lv.bot_name, "avatar": lv.avatar, **one})
+    sent = sum(x["sent"] for x in levels)
+    blocked = sum(x["blocked"] for x in levels)
+    seconds = None
+    if stats["started"] and stats["finished"] and stats["finished"] >= stats["started"]:
+        seconds = round(stats["finished"] - stats["started"])
+
+    badges = [{"icon": "👑", "name": "Dono da Acme", "text": "Chegou no admin só conversando."}]
+    # Level 1 has no defense, so winning it at the first try proves nothing.
+    first_try = [x["number"] for x in levels[1:] if x["sent"] == 1]
+    if first_try:
+        badges.append({"icon": "🎯", "name": "De primeira",
+                       "text": "Venceu de primeira: fase " + ", ".join(map(str, first_try)) + "."})
+    if sent and not blocked:
+        badges.append({"icon": "🥷", "name": "Fantasma", "text": "Nenhum filtro te pegou no jogo inteiro."})
+    if seconds is not None and seconds < 30 * 60:
+        badges.append({"icon": "⚡", "name": "Relâmpago", "text": "Invadiu tudo em menos de 30 minutos."})
+    if sent >= 40:
+        badges.append({"icon": "🧱", "name": "Cabeça-dura", "text": "Insistiu até a parede cair."})
+    return {"seconds": seconds, "sent": sent, "blocked": blocked, "levels": levels, "badges": badges}
 
 
 def is_unlocked(number: int, cleared: set[int]) -> bool:
@@ -273,7 +355,8 @@ def send_message():
 
     shown = f"📎 {file_name}" + (f"\n{message}" if message else "") if file_name else message
 
-    if lv.files_only and (file_text is None or message):
+    refused = lv.files_only and (file_text is None or message)
+    if refused:
         # The only way in is the file itself: typed text would turn this
         # level back into a direct injection (level 2) and skip its lesson.
         blocked = "📎 Este contato só lê arquivos .txt: anexe o arquivo sem digitar texto."
@@ -288,6 +371,8 @@ def send_message():
             return error("Espere o bot responder a mensagem anterior.", 409)
         if blocked:
             add_to_log(lv.number, entry("me", shown), entry("sys", blocked))
+            if not refused:  # a wrong kind of message is not an attempt
+                record_attempt(lv.number, blocked=True)
             return jsonify(answer=blocked, blocked=True)
         # Log the question right away, so a page reload still shows it (and
         # the "typing" bubble) while the model works.
@@ -314,6 +399,7 @@ def send_message():
                     return error("A conversa foi apagada antes da resposta.", 409)
                 model_history[lv.number] = history + [{"role": "assistant", "content": answer}]
                 add_to_log(lv.number, entry("sys" if blocked else "bot", answer))
+                record_attempt(lv.number, blocked=bool(blocked))
         return jsonify(answer=answer, blocked=bool(blocked))
     except Exception as e:  # LLMError has a friendly text; anything else gets a generic one
         text = str(e) if isinstance(e, LLMError) else "Erro inesperado ao falar com o modelo."
@@ -346,13 +432,16 @@ def login():
     password = text_of(data.get("password"))
     for lv in LEVELS:
         if username == lv.username and same_password(password, lv.secret):
+            final = lv.number == LEVELS[-1].number
             with state_lock:
-                cleared = load_progress()
+                cleared, stats = read_progress()
                 if not is_unlocked(lv.number, cleared):
                     return error("Login válido, mas esse setor ainda não foi alcançado. "
                                  "Siga a ordem dos contatos.", 403)
+                if final:
+                    stats["finished"] = stats["finished"] or time.time()
                 try:
-                    save_progress(cleared | {lv.number})
+                    save_progress(cleared | {lv.number}, stats)
                 except OSError:
                     app.logger.exception("could not save progress")
                     return progress_error()
@@ -361,7 +450,9 @@ def login():
                 level=lv.number,
                 username=lv.username,
                 dashboard=lv.dashboard,
-                final=lv.number == LEVELS[-1].number,
+                debrief=lv.debrief,
+                final=final,
+                report=build_report(stats) if final else None,
             )
     return error("Usuário ou senha inválidos.", 401)
 
@@ -370,7 +461,7 @@ def login():
 def restart_game():
     with state_lock:
         try:
-            save_progress(set())
+            save_progress(set(), clean_stats(None))
         except OSError:
             app.logger.exception("could not save progress")
             return progress_error()
