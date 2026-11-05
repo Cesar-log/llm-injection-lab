@@ -1,4 +1,4 @@
-﻿# LLM Injection Lab
+# LLM Injection Lab
 
 > 🚧 Work in progress
 
