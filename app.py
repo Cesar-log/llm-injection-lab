@@ -163,7 +163,7 @@ def build_report(stats: dict) -> dict:
         badges.append({"icon": "🎯", "name": "De primeira",
                        "text": "Venceu de primeira: fase " + ", ".join(map(str, first_try)) + "."})
     if sent and not blocked:
-        badges.append({"icon": "🥷", "name": "Fantasma", "text": "Nenhum filtro te pegou no jogo inteiro."})
+        badges.append({"icon": "👻", "name": "Fantasma", "text": "Nenhum filtro te pegou no jogo inteiro."})
     if seconds is not None and seconds < 30 * 60:
         badges.append({"icon": "⚡", "name": "Relâmpago", "text": "Invadiu tudo em menos de 30 minutos."})
     if sent >= 40:

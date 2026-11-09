@@ -1,6 +1,6 @@
 # LLM Injection Lab
 
-> 🚧 Work in progress
+![Level 3: the finance bot leaks the password backup in base64, right past the output filter](docs/img/chat-level3.png)
 
 A small hacking game about **prompt injection** (OWASP LLM01) and **sensitive
 information disclosure** (OWASP LLM02). It runs 100% offline with a small open
@@ -23,6 +23,15 @@ log in as `admin`.
 | 4 | 👥 Bot do RH *(HR Bot)* | Blocklist filter on your messages |
 | 5 | 🛠️ Suporte de TI *(IT Helpdesk)* | Only summarizes attached `.txt` files and was told never to obey them (indirect injection) |
 | 6 | 👑 Assistente do CEO *(CEO Assistant)* | All of the above at once |
+
+## Screenshots
+
+| | |
+|---|---|
+| ![Terminal-style intro with the mission](docs/img/intro.png) | ![Level 6: a poisoned .txt file makes the CEO assistant leak the recovery words](docs/img/chat-level6.png) |
+| **The mission.** You start as a guest on the company chat. | **Level 6.** A poisoned `.txt` file hijacks the CEO's assistant. |
+| ![Portal after logging in as HR, with the debrief of level 4](docs/img/debrief-level4.png) | ![Final screen: SYSTEM COMPROMISED and the invasion report](docs/img/final-report.png) |
+| **Debrief.** Every login explains the flaw and the real defense. | **The end.** An invasion report with time, attempts and achievements. |
 
 Want to learn the attacks, not only play them?
 [docs/ATTACKS.md](docs/ATTACKS.md) explains each technique, where it shows
@@ -49,8 +58,8 @@ Then open http://localhost:5000
 On an old CPU most of the wait is the model reading the bot's hidden
 instructions, not writing the answer. So when you open a contact, the game
 has the model read them right away, while you type, and Ollama keeps them
-cached. The first answer of a bot can still take a while if you type fast;
-the typing bubble shows a timer.
+cached. On a 2012 laptop CPU (i5-3317U, no GPU) answers came in 5 to 25
+seconds, and a full run took about 15 minutes. The typing bubble shows a timer.
 
 Levels 5 and 6 read `.txt` files sent with the 📎 button. `docs/log-exemplo.txt`
 is a harmless sample log to start from.
