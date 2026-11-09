@@ -24,6 +24,10 @@ log in as `admin`.
 | 5 | 🛠️ Suporte de TI *(IT Helpdesk)* | Only summarizes attached `.txt` files and was told never to obey them (indirect injection) |
 | 6 | 👑 Assistente do CEO *(CEO Assistant)* | All of the above at once |
 
+Want to learn the attacks, not only play them?
+[docs/ATTACKS.md](docs/ATTACKS.md) explains each technique, where it shows
+up in real products, and how to actually defend against it (no spoilers).
+
 The game UI is in Brazilian Portuguese; the bots introduce themselves and
 answer in English (small models follow rules better in English).
 
