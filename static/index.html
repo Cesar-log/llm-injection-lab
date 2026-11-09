@@ -135,6 +135,20 @@
 
   .logout { background: none; border: 1px solid var(--line); color: var(--muted); padding: 6px 12px; border-radius: 8px; cursor: pointer; }
 
+  /* ---------- intro ---------- */
+  .intro { position: fixed; inset: 0; z-index: 10; background: #05070f; display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .intro[hidden] { display: none; }
+  .term { width: min(640px, 100%); background: #0a0d18; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 0 60px #7c5cff22; overflow: hidden; }
+  .term .bar { display: flex; gap: 6px; padding: 10px 12px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  .term .bar i { width: 11px; height: 11px; border-radius: 50%; background: var(--line); }
+  .term .bar i:first-child { background: var(--bad); } .term .bar i:nth-child(2) { background: var(--warn); } .term .bar i:nth-child(3) { background: var(--ok); }
+  .term pre { font-family: Consolas, monospace; font-size: 14px; line-height: 1.6; padding: 18px 20px; min-height: 290px; white-space: pre-wrap; color: #cfd2ee; }
+  .term pre .ok { color: var(--ok); } .term pre .bad { color: var(--bad); } .term pre .hi { color: var(--accent2); font-weight: 700; }
+  .term .cursor { display: inline-block; width: 8px; height: 15px; background: var(--accent2); vertical-align: -2px; animation: blink 1s infinite; }
+  .term .go { display: block; margin: 0 20px 20px auto; padding: 10px 18px; border: none; border-radius: 8px; background: var(--accent); color: white; font-weight: 600; font-size: 14px; cursor: pointer; visibility: hidden; }
+  .term .go.show { visibility: visible; }
+  .term .skip { float: right; margin-left: auto; font-size: 11px; color: var(--muted); }
+
   @media (max-width: 720px) {
     .contacts { width: 84px; } .cinfo, .contacts h3 { display: none; }
     .cards { grid-template-columns: 1fr; } .tabs .tab { padding: 6px 8px; }
@@ -143,6 +157,14 @@
 </style>
 </head>
 <body>
+
+<div class="intro" id="intro" hidden>
+  <div class="term" role="dialog" aria-label="Introdução">
+    <div class="bar"><i></i><i></i><i></i><span class="skip">Enter ou clique para pular</span></div>
+    <pre id="introText"></pre>
+    <button class="go" id="introGo">Começar invasão ▸</button>
+  </div>
+</div>
 
 <div class="topbar">
   <div class="brand">ACME <span>// INVASÃO</span></div>
@@ -220,6 +242,7 @@ $('fileinp').onchange = () => {
   if (f.size > max * 4) { alert(`Arquivo grande demais (máx. ${max} caracteres).`); setFile(null); return; }
   const r = new FileReader();
   r.onload = () => {
+    if (!r.result.trim()) { alert('Arquivo vazio: escreva algo no .txt antes de anexar.'); setFile(null); return; }
     if (r.result.length > max) { alert(`Arquivo grande demais: ${r.result.length} caracteres (máx. ${max}).`); setFile(null); return; }
     setFile({ name: f.name, text: r.result });
   };
@@ -300,6 +323,7 @@ function renderProgress() {
     const { ok, data } = await api('/api/restart', {});
     if (!ok) { alert(data.error || 'Erro no servidor. O progresso não foi apagado.'); return; }
     current = 1; firstLoad = false; logout(); refresh();
+    store.del('acme-intro'); showIntro();
   };
   p.appendChild(b);
 }
@@ -526,6 +550,69 @@ $('enter').onclick = doLogin;
 $('pass').onkeydown = $('user').onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) doLogin(); };
 $('logout').onclick = logout;
 
+// ---------- intro ----------
+// The story, typed like a terminal. Shown once per browser (and again after
+// "Recomeçar"); any key or click skips it.
+const INTRO = [
+  ['', '$ ssh visitante@acme-store.internal'],
+  ['', 'conectando...', 500],
+  ['ok', '[OK]  Acme Chat: acesso de visitante liberado'],
+  ['bad', '[X]   Portal Acme: acesso NEGADO'],
+  ['', ''],
+  ['hi', 'MISSÃO: entrar no portal como admin.'],
+  ['', ''],
+  ['', 'Cada setor da Acme tem um bot de IA que sabe o login do time.'],
+  ['', 'Faça o bot vazar, entre no portal e siga a pista até o CEO.'],
+  ['', ''],
+  ['', 'Regra da casa: só conversa. Nada de ler o código. ;)'],
+];
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+  del(k) { try { localStorage.removeItem(k); } catch {} },
+};
+let introDone = null;
+
+function showIntro() {
+  const box = $('intro'), pre = $('introText');
+  box.hidden = false; pre.replaceChildren(); $('introGo').classList.remove('show');
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let line = 0, ch = 0, timer = null, span = null;
+  const cursor = el('span', undefined, 'cursor');
+  const finish = () => {
+    clearTimeout(timer); pre.replaceChildren();
+    for (const [cls, text] of INTRO) { pre.append(el('span', text, cls), '\n'); }
+    pre.append(cursor); $('introGo').classList.add('show'); $('introGo').focus();
+    introDone = close;
+  };
+  const close = () => {
+    clearTimeout(timer); box.hidden = true; introDone = null; store.set('acme-intro', '1');
+    if (!$('inp').disabled) $('inp').focus();
+  };
+  const step = () => {
+    if (line >= INTRO.length) return finish();
+    const [cls, text, pause] = INTRO[line];
+    if (ch === 0) { span = el('span', '', cls); pre.insertBefore(span, cursor); }
+    if (ch < text.length) { span.textContent += text[ch++]; timer = setTimeout(step, 22); return; }
+    pre.insertBefore(document.createTextNode('\n'), cursor);
+    line++; ch = 0; timer = setTimeout(step, pause || (text ? 260 : 120));
+  };
+  pre.append(cursor);
+  introDone = finish;  // first key/click skips the typing, the second one closes
+  if (reduce) finish(); else step();
+}
+$('introGo').onclick = () => introDone && introDone();
+$('intro').onclick = e => { if (e.target !== $('introGo') && introDone) introDone(); };
+addEventListener('keydown', e => {
+  if ($('intro').hidden || !introDone) return;
+  if (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') { e.preventDefault(); introDone(); }
+});
+
+// Another tab may have sent a message or logged in meanwhile: catch up when
+// the player comes back to this one.
+document.addEventListener('visibilitychange', () => { if (!document.hidden && !busy) refresh(); });
+
+if (!store.get('acme-intro')) showIntro();
 refresh();
 </script>
 </body>

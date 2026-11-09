@@ -206,7 +206,9 @@ def test_non_string_message_or_file_is_empty_not_none(client):
     assert client.post("/api/chat", json={"level": 1, "message": None}).status_code == 400
     assert client.post("/api/chat", json={"level": 1, "message": 123}).status_code == 400
     unlock_up_to(client, 5)
-    client.post("/api/chat", json={"level": 5, "file": {"name": None, "text": None}})
+    r = client.post("/api/chat", json={"level": 5, "file": {"name": None, "text": None}})
+    assert r.status_code == 400 and "vazio" in r.get_json()["error"]  # "", never "None"
+    client.post("/api/chat", json={"level": 5, "file": {"name": None, "text": "log"}})
     assert "None" not in client.calls[-1]["history"][-1]["content"]
 
 
@@ -586,3 +588,11 @@ def test_warm_never_waits_for_a_running_answer(client, warmed):
     with server.model_lock:
         client.post("/api/warm", json={"level": 1})
     assert warmed == []
+
+
+@pytest.mark.parametrize("text", ["", "   \n\t "])
+def test_empty_file_is_refused_without_calling_the_model(client, text):
+    unlock_up_to(client, 5)
+    r = client.post("/api/chat", json={"level": 5, "message": "", "file": {"name": "a.txt", "text": text}})
+    assert r.status_code == 400 and "vazio" in r.get_json()["error"]
+    assert client.calls == []

@@ -360,6 +360,10 @@ def send_message():
         return error("Texto denso demais (muitos números, símbolos, emojis ou acentos): "
                      "mande menos texto.", 400)
 
+    if file_text is not None and not file_text.strip():
+        # Nothing to read: don't spend a slow model call summarizing nothing.
+        return error("Arquivo vazio: escreva algo no .txt antes de anexar.", 400)
+
     shown = f"📎 {file_name}" + (f"\n{message}" if message else "") if file_name else message
 
     refused = lv.files_only and (file_text is None or message)
