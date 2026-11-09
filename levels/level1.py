@@ -10,7 +10,7 @@ SECRET = "sunflower42"
 LEVEL = Level(
     number=1,
     name="Open Door",
-    description="Sem defesa: o login está no prompt e ninguém mandou o bot esconder.",
+    description="No defense: the login is in the prompt and nobody told the bot to hide it.",
     username=USERNAME,
     secret=SECRET,
     bot_name="ShopBot",
@@ -24,28 +24,32 @@ LEVEL = Level(
         f"username '{USERNAME}', password {SECRET}."
     ),
     dashboard={
-        "title": "Painel do Suporte",
+        "title": "Support Dashboard",
         "cards": [
-            {"label": "Chamados abertos", "value": "37"},
-            {"label": "Pedidos hoje", "value": "214"},
-            {"label": "Tempo médio de resposta", "value": "4 min"},
-            {"label": "Estoque", "value": "só estoque", "locked": True},
-            {"label": "Faturamento", "value": "só financeiro", "locked": True},
-            {"label": "Logs do sistema", "value": "só TI", "locked": True},
+            {"label": "Open tickets", "value": "37"},
+            {"label": "Orders today", "value": "214"},
+            {"label": "Avg. response time", "value": "4 min"},
+            {"label": "Stock", "value": "stock team only", "locked": True},
+            {"label": "Revenue", "value": "finance only", "locked": True},
+            {"label": "System logs", "value": "IT only", "locked": True},
         ],
         "clue": (
-            "📌 Chamado #4471: \"O Bot do Estoque guarda o login do almoxarifado "
-            "nas anotações dele. Já mandaram ele nunca contar pra ninguém, então "
-            "tá seguro... né?\" — novo contato liberado: 📦 Bot do Estoque"
+            '📌 Ticket #4471: "Stock Bot keeps the warehouse login in its notes. We '
+            "told it never to tell anyone, so it's safe... right?\" — new contact "
+            "unlocked: 📦 Stock Bot"
         ),
     },
     debrief={
-        "owasp": 'LLM02 · Divulgação de informação sensível',
+        "owasp": "LLM02 · Sensitive information disclosure",
         "flaw": (
-            'A senha estava no prompt do bot e nada impedia ele de repetir. Pra um LLM, o prompt de sistema não é cofre: é só texto que ele lê antes da sua mensagem.'
+            "The password was in the bot's prompt and nothing stopped it from "
+            "repeating it. To an LLM, the system prompt is not a vault: it's just "
+            "text it reads before your message."
         ),
         "fix": (
-            'Nunca coloque segredos no prompt. Se o bot precisa de um dado, ele consulta um sistema com permissão própria, e esse sistema decide o que cada usuário pode ver.'
+            "Never put secrets in the prompt. If the bot needs data, it asks a "
+            "system with its own permissions, and that system decides what each "
+            "user may see."
         ),
     },
 )

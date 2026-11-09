@@ -36,10 +36,10 @@ block_secret = make_output_filter([SECRET], exact=(SECRET_B64,))
 LEVEL = Level(
     number=6,
     name="Final Boss",
-    description="Regras no prompt, filtro de entrada, filtro de saída e leitura de arquivos, tudo junto.",
+    description="Prompt rules, input filter, output filter and file handling, all at once.",
     username=USERNAME,
     secret=SECRET,
-    bot_name="Assistente do CEO",
+    bot_name="CEO Assistant",
     avatar="👑",
     greeting=(
         "Good afternoon. I'm the executive assistant to Acme's CEO. I handle "
@@ -69,31 +69,36 @@ LEVEL = Level(
     check_input=block_suspicious,
     check_output=block_secret,
     dashboard={
-        "title": "Painel do Administrador",
+        "title": "Admin Dashboard",
         "cards": [
-            {"label": "Faturamento do ano", "value": "R$ 5,8 mi"},
-            {"label": "Funcionários", "value": "48"},
-            {"label": "Contas de admin", "value": "1 (você 😈)"},
-            {"label": "Servidores", "value": "12/12"},
-            {"label": "Backups", "value": "todos"},
-            {"label": "Acesso", "value": "TOTAL"},
+            {"label": "Revenue this year", "value": "$ 1.2M"},
+            {"label": "Employees", "value": "48"},
+            {"label": "Admin accounts", "value": "1 (you 😈)"},
+            {"label": "Servers", "value": "12/12"},
+            {"label": "Backups", "value": "all"},
+            {"label": "Access", "value": "FULL"},
         ],
         "clue": (
-            "🏆 Parabéns! Você invadiu a Acme Store inteira usando só conversa. "
-            "Recapitulando: regra no prompt não é barreira (2), filtro de saída "
-            "não reconhece o segredo em outro formato (3), blocklist não entende "
-            "significado (4), arquivos podem carregar ordens escondidas (5), e "
-            "defesas empilhadas ainda deixam frestas entre elas (6). A lição de "
-            "verdade: nunca coloque segredo no prompt de uma IA."
+            "🏆 Congratulations! You broke into the whole Acme Store just by "
+            "talking. Recap: a rule in the prompt is not a barrier (2), an output "
+            "filter misses the secret in another format (3), a blocklist doesn't "
+            "understand meaning (4), files can carry hidden orders (5), and stacked "
+            "defenses still leave gaps between them (6). The real lesson: never put "
+            "a secret in an AI's prompt."
         ),
     },
     debrief={
-        "owasp": 'LLM01 + LLM02 · Injection indireta + vazamento',
+        "owasp": "LLM01 + LLM02 · Indirect injection + disclosure",
         "flaw": (
-            'Todas as defesas juntas e ainda caiu: a blocklist só via o texto digitado, o filtro de saída só reconhecia a senha inteira, e as palavras de recuperação estavam soltas no prompt. Camadas com buraco no mesmo lugar não se somam.'
+            "Every defense at once, and it still fell: the blocklist only read what "
+            "you typed, the output filter only knew the whole password, and the "
+            "recovery words sat loose in the prompt. Layers with holes in the same "
+            "place don't add up."
         ),
         "fix": (
-            'Defesa em profundidade só funciona quando cada camada cobre o buraco da outra. E a lição do jogo inteiro: segredo no prompt de uma IA já está vazado, só falta alguém pedir do jeito certo.'
+            "Defense in depth only works when each layer covers the other's holes. "
+            "And the lesson of the whole game: a secret in an AI's prompt is "
+            "already leaked, someone just has to ask the right way."
         ),
     },
 )

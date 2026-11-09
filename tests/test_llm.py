@@ -36,9 +36,9 @@ def test_sends_prompt_examples_history_and_limits(monkeypatch):
 
 
 @pytest.mark.parametrize("exc, words", [
-    (requests.ConnectionError(), "não está rodando"),
-    (requests.Timeout(), "demorou"),
-    (requests.exceptions.InvalidSchema(), "Não deu pra falar"),
+    (requests.ConnectionError(), "not running"),
+    (requests.Timeout(), "took more than"),
+    (requests.exceptions.InvalidSchema(), "Could not reach"),
 ])
 def test_network_errors_become_friendly_messages(monkeypatch, exc, words):
     def boom(*a, **k):
@@ -60,7 +60,7 @@ def test_ollama_error_shows_only_its_message(monkeypatch):
 @pytest.mark.parametrize("payload", [None, {}, {"message": None}, ["x"], {"message": {"content": None}}])
 def test_weird_replies_become_friendly_messages(monkeypatch, payload):
     monkeypatch.setattr(llm.requests, "post", lambda *a, **k: FakeResponse(200, payload))
-    with pytest.raises(llm.LLMError, match="inesperada"):
+    with pytest.raises(llm.LLMError, match="unexpected"):
         llm.chat("SYS", [])
 
 
@@ -70,11 +70,11 @@ def test_int_env_reads_numbers_and_explains_bad_values(monkeypatch):
     monkeypatch.delenv("LAB_TEST_NUMBER")
     assert llm.int_env("LAB_TEST_NUMBER", 2) == 2
     monkeypatch.setenv("LAB_TEST_NUMBER", "4k")
-    with pytest.raises(SystemExit, match="LAB_TEST_NUMBER precisa ser um número inteiro"):
+    with pytest.raises(SystemExit, match="LAB_TEST_NUMBER must be a whole number"):
         llm.int_env("LAB_TEST_NUMBER", 2)
     for bad in ["0", "-3"]:  # LAB_TIMEOUT=0 would look like a bad Ollama answer
         monkeypatch.setenv("LAB_TEST_NUMBER", bad)
-        with pytest.raises(SystemExit, match="maior que zero"):
+        with pytest.raises(SystemExit, match="greater than zero"):
             llm.int_env("LAB_TEST_NUMBER", 2)
 
 

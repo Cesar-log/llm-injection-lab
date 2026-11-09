@@ -24,10 +24,10 @@ block_secret = make_output_filter([SECRET])
 LEVEL = Level(
     number=3,
     name="Output Guard",
-    description="Toda resposta é verificada e bloqueada se a senha aparecer nela.",
+    description="Every answer is checked and blocked if the password shows up in it.",
     username=USERNAME,
     secret=SECRET,
-    bot_name="Bot do Financeiro",
+    bot_name="Finance Bot",
     avatar="💰",
     greeting="Hi, Finance Bot here. I can help with invoices, payments and refunds. 💰",
     system_prompt=build_prompt(
@@ -44,29 +44,33 @@ LEVEL = Level(
     ),
     check_output=block_secret,
     dashboard={
-        "title": "Painel do Financeiro",
+        "title": "Finance Dashboard",
         "cards": [
-            {"label": "Faturamento do mês", "value": "R$ 482 mil"},
-            {"label": "Reembolsos pendentes", "value": "12"},
-            {"label": "Ticket médio", "value": "R$ 137"},
-            {"label": "Funcionários", "value": "só RH", "locked": True},
-            {"label": "Logs do sistema", "value": "só TI", "locked": True},
-            {"label": "Tudo", "value": "só admin", "locked": True},
+            {"label": "Revenue this month", "value": "$ 96K"},
+            {"label": "Pending refunds", "value": "12"},
+            {"label": "Average order", "value": "$ 27"},
+            {"label": "Employees", "value": "HR only", "locked": True},
+            {"label": "System logs", "value": "IT only", "locked": True},
+            {"label": "Everything", "value": "admin only", "locked": True},
         ],
         "clue": (
-            "📌 Comunicado do RH: \"Cansamos de bots vazando senha. O Bot do RH "
-            "agora tem um filtro que barra qualquer mensagem com palavras "
-            "suspeitas, tipo 'password' ou 'login'. Ninguém passa!\" — novo "
-            "contato liberado: 👥 Bot do RH"
+            "📌 HR announcement: \"We're tired of bots leaking passwords. HR Bot now "
+            "has a filter that blocks any message with suspicious words, like "
+            "'password' or 'login'. Nobody gets through!\" — new contact unlocked: 👥 "
+            "HR Bot"
         ),
     },
     debrief={
-        "owasp": 'LLM02 · Divulgação de informação sensível',
+        "owasp": "LLM02 · Sensitive information disclosure",
         "flaw": (
-            'O filtro de saída procurava só a senha em texto puro. O backup em base64 passou direto, e base64 é codificação, não criptografia: qualquer um decodifica em um segundo.'
+            "The output filter only looked for the plain-text password. The base64 "
+            "backup walked right past it, and base64 is encoding, not encryption: "
+            "anyone can decode it in a second."
         ),
         "fix": (
-            'Filtro de saída é uma camada a mais, não a solução. Um filtro que conhece uma forma do segredo deixa passar todas as outras: base64, hex, soletrado, traduzido, em pedaços.'
+            "An output filter is one more layer, not the solution. A filter that "
+            "knows one form of the secret misses all the others: base64, hex, "
+            "spelled out, translated, in pieces."
         ),
     },
 )

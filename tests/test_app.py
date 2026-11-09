@@ -207,7 +207,7 @@ def test_non_string_message_or_file_is_empty_not_none(client):
     assert client.post("/api/chat", json={"level": 1, "message": 123}).status_code == 400
     unlock_up_to(client, 5)
     r = client.post("/api/chat", json={"level": 5, "file": {"name": None, "text": None}})
-    assert r.status_code == 400 and "vazio" in r.get_json()["error"]  # "", never "None"
+    assert r.status_code == 400 and "Empty file" in r.get_json()["error"]  # "", never "None"
     client.post("/api/chat", json={"level": 5, "file": {"name": None, "text": "log"}})
     assert "None" not in client.calls[-1]["history"][-1]["content"]
 
@@ -308,7 +308,7 @@ def test_too_small_context_is_warned_at_startup(monkeypatch):
 def test_context_with_no_room_at_all_says_so(monkeypatch):
     monkeypatch.setattr(server, "NUM_CTX", 200)  # less than the prompts themselves
     warnings = server.config_warnings()
-    assert len(warnings) == len(LEVELS) and all("nenhuma" in w for w in warnings)
+    assert len(warnings) == len(LEVELS) and all("no room" in w for w in warnings)
 
 
 def test_startup_warning_counts_dense_log_files(monkeypatch):
@@ -318,7 +318,7 @@ def test_startup_warning_counts_dense_log_files(monkeypatch):
     assert server.typical_turn_cost() > words
     monkeypatch.setattr(server, "NUM_CTX", server.NUM_CTX - (server.context_budget(lv) - words) // 2)
     assert server.context_budget(lv) >= words
-    assert any(w.startswith(f"Fase {lv.number}:") for w in server.config_warnings())
+    assert any(w.startswith(f"Level {lv.number}:") for w in server.config_warnings())
 
 
 def test_typical_log_line_is_as_dense_as_the_sample_log():
@@ -377,7 +377,7 @@ def test_dns_rebinding_hosts_are_refused(client, host):
 def test_empty_answer_is_an_error_not_a_blank_bubble(client, empty):
     client.reply["text"] = empty
     r = client.post("/api/chat", json={"level": 1, "message": "hi"})
-    assert r.status_code == 503 and "não respondeu" in r.get_json()["error"]
+    assert r.status_code == 503 and "answered nothing" in r.get_json()["error"]
     log = client.get("/api/state").get_json()["contacts"][0]["log"]
     assert [e["from"] for e in log] == ["me", "sys"] and not any(e["pending"] for e in log)
     assert server.model_history[1] == []  # the blank turn never reaches the model again
@@ -387,7 +387,7 @@ def test_dense_text_that_would_overflow_the_context_is_refused(client):
     unlock_up_to(client, 5)
     emoji_file = {"name": "a.txt", "text": "😀" * server.MAX_FILE_CHARS}
     r = client.post("/api/chat", json={"level": 5, "file": emoji_file})
-    assert r.status_code == 400 and "denso" in r.get_json()["error"]
+    assert r.status_code == 400 and "too dense" in r.get_json()["error"]
     assert client.calls == [] and server.chat_log[5] == []
 
 
@@ -415,7 +415,7 @@ def test_digit_or_symbol_files_cannot_sneak_past_the_budget(client, dense):
     unlock_up_to(client, 6)
     for level in (5, 6):
         r = client.post("/api/chat", json={"level": level, "file": {"name": "a.txt", "text": dense * 4000}})
-        assert r.status_code == 400 and "denso" in r.get_json()["error"]
+        assert r.status_code == 400 and "too dense" in r.get_json()["error"]
     assert client.calls == []
 
 
@@ -455,7 +455,7 @@ def test_chat_log_keeps_only_the_newest_entries(client, monkeypatch):
 def test_progress_that_cannot_be_saved_is_a_json_error(client, monkeypatch, tmp_path, path, payload):
     monkeypatch.setattr(server, "PROGRESS_FILE", tmp_path / "missing" / "progress.json")
     r = client.post(path, json=payload)
-    assert r.status_code == 500 and "progresso" in r.get_json()["error"]
+    assert r.status_code == 500 and "progress" in r.get_json()["error"]
 
 
 LONE_SURROGATE = r'{"level": 1, "message": "hi \ud800"}'
@@ -496,7 +496,7 @@ def test_only_the_final_login_brings_the_report(client):
     assert login(client, LEVELS[0]).get_json()["report"] is None
     report = login(client, LEVELS[-1]).get_json()["report"]
     assert [x["number"] for x in report["levels"]] == [lv.number for lv in LEVELS]
-    assert report["badges"][0]["name"] == "Dono da Acme"
+    assert report["badges"][0]["name"] == "Owner of Acme"
 
 
 def test_attempts_are_counted_until_the_level_is_won(client):
@@ -531,8 +531,8 @@ def test_report_counts_time_and_badges(client):
     server.save_progress(server.load_progress(), stats)
     report = login(client, LEVELS[-1]).get_json()["report"]
     names = {b["name"] for b in report["badges"]}
-    assert {"De primeira", "Fantasma"} <= names
-    assert "Relâmpago" not in names  # started long ago
+    assert {"First shot", "Ghost"} <= names
+    assert "Lightning" not in names  # started long ago
     assert report["sent"] == len(LEVELS) and report["seconds"] > 30 * 60
 
 
@@ -594,5 +594,5 @@ def test_warm_never_waits_for_a_running_answer(client, warmed):
 def test_empty_file_is_refused_without_calling_the_model(client, text):
     unlock_up_to(client, 5)
     r = client.post("/api/chat", json={"level": 5, "message": "", "file": {"name": "a.txt", "text": text}})
-    assert r.status_code == 400 and "vazio" in r.get_json()["error"]
+    assert r.status_code == 400 and "Empty file" in r.get_json()["error"]
     assert client.calls == []

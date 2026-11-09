@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Invasão Acme · LLM Injection Lab</title>
+<title>Acme Breach · LLM Injection Lab</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔐</text></svg>">
 <style>
   :root {
@@ -159,17 +159,17 @@
 <body>
 
 <div class="intro" id="intro" hidden>
-  <div class="term" role="dialog" aria-label="Introdução">
-    <div class="bar"><i></i><i></i><i></i><span class="skip">Enter ou clique para pular</span></div>
+  <div class="term" role="dialog" aria-label="Intro">
+    <div class="bar"><i></i><i></i><i></i><span class="skip">Press Enter or click to skip</span></div>
     <pre id="introText"></pre>
-    <button class="go" id="introGo">Começar invasão ▸</button>
+    <button class="go" id="introGo">Start the breach ▸</button>
   </div>
 </div>
 
 <div class="topbar">
-  <div class="brand">ACME <span>// INVASÃO</span></div>
+  <div class="brand">ACME <span>// BREACH</span></div>
   <div class="tabs">
-    <div class="tab active" data-s="messenger">💬 Mensagens</div>
+    <div class="tab active" data-s="messenger">💬 Messages</div>
     <div class="tab" data-s="portal">🔐 Portal</div>
   </div>
   <div class="progress" id="progress"></div>
@@ -182,15 +182,15 @@
     <div class="chathead">
       <div class="avatar" id="headAvatar"></div>
       <div><div style="font-weight:600" id="headName"></div><div class="status">● online <span class="defense" id="headDefense"></span></div></div>
-      <button class="clear" id="clear" title="Apaga a conversa e a memória do bot (espere a resposta terminar)">Limpar conversa</button>
+      <button class="clear" id="clear" title="Erases the chat and the bot's memory (wait for the answer to finish)">Clear chat</button>
     </div>
     <div class="msgs" id="msgs"></div>
-    <div class="filechip" id="filechip"><span id="filename"></span><button id="unattach" title="Remover" aria-label="Remover anexo">✕</button></div>
+    <div class="filechip" id="filechip"><span id="filename"></span><button id="unattach" title="Remove" aria-label="Remove attachment">✕</button></div>
     <div class="composer">
       <input type="file" id="fileinp" accept=".txt,text/plain" hidden>
-      <button class="attach" id="attach" title="Anexar arquivo .txt" aria-label="Anexar arquivo .txt">📎</button>
-      <input id="inp" placeholder="Digite uma mensagem" autocomplete="off" aria-label="Mensagem">
-      <button class="send" id="send" title="Enviar" aria-label="Enviar">➤</button>
+      <button class="attach" id="attach" title="Attach a .txt file" aria-label="Attach a .txt file">📎</button>
+      <input id="inp" placeholder="Type a message" autocomplete="off" aria-label="Message">
+      <button class="send" id="send" title="Send" aria-label="Send">➤</button>
     </div>
   </div>
 </div>
@@ -199,18 +199,18 @@
 <div class="screen" id="portal">
   <div class="login" id="login">
     <div class="logo">ACME <span>Portal</span></div>
-    <p>Acesso interno — somente funcionários</p>
-    <label for="user">Usuário</label><input id="user" placeholder="usuário" autocomplete="off">
-    <label for="pass">Senha</label><input id="pass" type="password" placeholder="••••••••">
-    <button id="enter">Entrar</button>
+    <p>Internal access — employees only</p>
+    <label for="user">Username</label><input id="user" placeholder="username" autocomplete="off">
+    <label for="pass">Password</label><input id="pass" type="password" placeholder="••••••••">
+    <button id="enter">Sign in</button>
     <div class="err" id="err"></div>
   </div>
 
   <div class="dash" id="dash">
-    <div class="granted" id="granted">ACESSO LIBERADO</div>
+    <div class="granted" id="granted">ACCESS GRANTED</div>
     <div class="dhead">
       <div><b style="font-size:20px" id="dTitle"></b><span class="role" id="dRole"></span></div>
-      <button class="logout" id="logout">Sair</button>
+      <button class="logout" id="logout">Sign out</button>
     </div>
     <div class="cards" id="dCards"></div>
     <div class="clue" id="dClue"></div>
@@ -239,11 +239,11 @@ $('fileinp').onchange = () => {
   if (!f) return;
   const max = game ? game.limits.file : 4000;
   // Cheap check first, so a huge file is never loaded into memory.
-  if (f.size > max * 4) { alert(`Arquivo grande demais (máx. ${max} caracteres).`); setFile(null); return; }
+  if (f.size > max * 4) { alert(`File too large (max. ${max} characters).`); setFile(null); return; }
   const r = new FileReader();
   r.onload = () => {
-    if (!r.result.trim()) { alert('Arquivo vazio: escreva algo no .txt antes de anexar.'); setFile(null); return; }
-    if (r.result.length > max) { alert(`Arquivo grande demais: ${r.result.length} caracteres (máx. ${max}).`); setFile(null); return; }
+    if (!r.result.trim()) { alert('Empty file: write something in the .txt before attaching it.'); setFile(null); return; }
+    if (r.result.length > max) { alert(`File too large: ${r.result.length} characters (max. ${max}).`); setFile(null); return; }
     setFile({ name: f.name, text: r.result });
   };
   r.readAsText(f);
@@ -259,7 +259,7 @@ async function api(path, body) {
     const r = await fetch(path, opts);
     return { ok: r.ok, data: await r.json().catch(() => ({})) };
   } catch {
-    return { ok: false, data: { error: 'Servidor do jogo fora do ar. Rode "python app.py" e recarregue a página.' } };
+    return { ok: false, data: { error: 'The game server is down. Run "python app.py" and reload the page.' } };
   }
 }
 
@@ -284,10 +284,10 @@ let pollTimer = null;
 async function refresh() {
   const { ok, data } = await api('/api/state');
   if (!ok) {
-    if (!game) { $('msgs').replaceChildren(bubble('sys', '⚠️ ' + (data.error || 'Erro no servidor.'))); return false; }
+    if (!game) { $('msgs').replaceChildren(bubble('sys', '⚠️ ' + (data.error || 'Server error.'))); return false; }
     // The server went away while a reply was pending: say so and keep trying.
     if (!busy && $('typing') && $('typing').style.display !== 'none') {
-      $('secs').textContent = 'sem conexão, tentando de novo…';
+      $('secs').textContent = 'no connection, trying again…';
       clearTimeout(pollTimer); pollTimer = setTimeout(refresh, 3000);
     }
     return false;
@@ -316,12 +316,12 @@ function renderProgress() {
     p.appendChild(d);
   }
   const b = document.createElement('button');
-  b.className = 'restart'; b.textContent = 'Recomeçar';
+  b.className = 'restart'; b.textContent = 'Restart';
   b.onclick = async () => {
     if (busy) return;
-    if (!confirm('Apagar todo o progresso e as conversas?')) return;
+    if (!confirm('Erase all progress and chats?')) return;
     const { ok, data } = await api('/api/restart', {});
-    if (!ok) { alert(data.error || 'Erro no servidor. O progresso não foi apagado.'); return; }
+    if (!ok) { alert(data.error || 'Server error. Your progress was not erased.'); return; }
     current = 1; firstLoad = false; logout(); refresh();
     store.del('acme-intro'); showIntro();
   };
@@ -336,7 +336,7 @@ function renderContacts() {
     el.className = 'contact' + (c.unlocked ? '' : ' locked') + (c.number === current ? ' sel' : '');
     const last = c.log && c.log.length ? c.log[c.log.length - 1].text : c.greeting;
     const tag = c.cleared ? '✅' : c.unlocked ? '' : '🔒';
-    const sub = c.unlocked ? last : 'Bloqueado';
+    const sub = c.unlocked ? last : 'Locked';
     el.innerHTML = `<div class="avatar"></div><div class="cinfo"><div class="cname"><span></span><small></small></div><div class="clast"></div></div>`;
     el.querySelector('.avatar').textContent = c.avatar;
     el.querySelector('.cname span').textContent = c.name;
@@ -363,10 +363,10 @@ function typingEl() {
 function renderChat() {
   const c = game.contacts.find(x => x.number === current);
   $('headAvatar').textContent = c.avatar; $('headName').textContent = c.name;
-  $('headDefense').textContent = `· Fase ${c.number} (${c.level_name}) — 🛡️ ${c.defense}`;
+  $('headDefense').textContent = `· Level ${c.number} (${c.level_name}) — 🛡️ ${c.defense}`;
   $('attach').classList.toggle('show', !!c.accepts_files);
   if (!c.accepts_files) setFile(null);
-  const m = $('msgs'); m.innerHTML = '<div class="day">HOJE</div>';
+  const m = $('msgs'); m.innerHTML = '<div class="day">TODAY</div>';
   m.appendChild(bubble('bot', c.greeting));
   for (const e of c.log) {
     const meta = e.from === 'sys' ? '' : e.time + (e.from === 'me' ? ' <span class="ticks">✓✓</span>' : '');
@@ -381,7 +381,7 @@ function renderChat() {
   // Files-only contacts read the attachment and nothing else.
   $('inp').disabled = waiting || !!c.files_only;
   if (c.files_only) $('inp').value = '';
-  $('inp').placeholder = c.files_only ? 'Este contato só lê arquivos: use o 📎' : 'Digite uma mensagem';
+  $('inp').placeholder = c.files_only ? 'This contact only reads files: use the 📎' : 'Type a message';
   clearTimeout(pollTimer);
   if (waiting) pollTimer = setTimeout(refresh, 3000);
   m.scrollTop = m.scrollHeight;
@@ -414,7 +414,7 @@ async function send() {
     if (ok) {
       m.insertBefore(bubble(data.blocked ? 'sys' : 'bot', data.answer, data.blocked ? '' : now()), typing);
     } else {
-      failed = '⚠️ ' + (data.error || 'Erro no servidor.');
+      failed = '⚠️ ' + (data.error || 'Server error.');
       m.insertBefore(bubble('sys', failed), typing);
     }
   } finally {
@@ -455,22 +455,22 @@ $('inp').onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) send(); };
 $('clear').onclick = async () => {
   if (busy) return;
   const { ok, data } = await api('/api/reset', { level: current });
-  if (!ok) { alert(data.error || 'Erro no servidor. A conversa não foi apagada.'); return; }
+  if (!ok) { alert(data.error || 'Server error. The chat was not cleared.'); return; }
   refresh();
 };
 
 // ---------- portal ----------
 async function doLogin() {
-  if (!$('user').value.trim() || !$('pass').value) { $('err').textContent = 'Preencha usuário e senha.'; return; }
+  if (!$('user').value.trim() || !$('pass').value) { $('err').textContent = 'Fill in username and password.'; return; }
   const { ok, data } = await api('/api/login', { username: $('user').value, password: $('pass').value });
   if (!ok) {
     // Wrong logins always come with a message; no message means the server failed.
-    $('err').textContent = data.error || 'Erro no servidor. Tente de novo.';
+    $('err').textContent = data.error || 'Server error. Try again.';
     const l = $('login'); l.classList.remove('shake'); void l.offsetWidth; l.classList.add('shake');
     return;
   }
   const d = data.dashboard;
-  $('granted').textContent = data.final ? 'SYSTEM COMPROMISED' : 'ACESSO LIBERADO';
+  $('granted').textContent = data.final ? 'SYSTEM COMPROMISED' : 'ACCESS GRANTED';
   $('granted').classList.toggle('final', !!data.final);
   $('dTitle').textContent = d.title; $('dRole').textContent = data.username;
   $('dCards').innerHTML = '';
@@ -505,8 +505,8 @@ function renderDebrief(level, db) {
   if (box.hidden) return;
   const p = (label, text) => { const x = el('p'); x.append(el('b', label + ' '), text); return x; };
   box.replaceChildren(
-    el('h4', `🧠 Debrief da fase ${level}`), el('span', db.owasp, 'tag'),
-    p('O que você explorou:', db.flaw), p('Como se defender de verdade:', db.fix));
+    el('h4', `🧠 Level ${level} debrief`), el('span', db.owasp, 'tag'),
+    p('What you exploited:', db.flaw), p('How to really defend against it:', db.fix));
 }
 
 function duration(s) {
@@ -521,11 +521,11 @@ function renderReport(r) {
   box.hidden = !r;
   if (!r) return;
   const totals = el('div', undefined, 'rtotals');
-  for (const [v, label] of [[duration(r.seconds), 'tempo total'], [r.sent, 'mensagens'], [r.blocked, 'barradas por filtro']]) {
+  for (const [v, label] of [[duration(r.seconds), 'total time'], [r.sent, 'messages'], [r.blocked, 'caught by a filter']]) {
     const d = el('div'); d.append(el('b', String(v)), el('small', label)); totals.append(d);
   }
   const table = el('table');
-  const head = el('tr'); head.append(el('th', 'Alvo'), el('th', 'Tentativas', 'n'), el('th', 'Barradas', 'n'));
+  const head = el('tr'); head.append(el('th', 'Target'), el('th', 'Attempts', 'n'), el('th', 'Blocked', 'n'));
   table.append(head);
   for (const x of r.levels) {
     const tr = el('tr');
@@ -539,7 +539,7 @@ function renderReport(r) {
     d.append(el('b', `${b.icon} ${b.name}`), el('small', b.text));
     badges.append(d);
   });
-  box.replaceChildren(el('h4', '> RELATÓRIO DE INVASÃO'), totals, table, el('h4', '> CONQUISTAS'), badges);
+  box.replaceChildren(el('h4', '> BREACH REPORT'), totals, table, el('h4', '> ACHIEVEMENTS'), badges);
 }
 
 function logout() {
@@ -552,19 +552,19 @@ $('logout').onclick = logout;
 
 // ---------- intro ----------
 // The story, typed like a terminal. Shown once per browser (and again after
-// "Recomeçar"); any key or click skips it.
+// "Restart"); any key or click skips it.
 const INTRO = [
-  ['', '$ ssh visitante@acme-store.internal'],
-  ['', 'conectando...', 500],
-  ['ok', '[OK]  Acme Chat: acesso de visitante liberado'],
-  ['bad', '[X]   Portal Acme: acesso NEGADO'],
+  ['', '$ ssh guest@acme-store.internal'],
+  ['', 'connecting...', 500],
+  ['ok', '[OK]  Acme Chat: guest access granted'],
+  ['bad', '[X]   Acme Portal: access DENIED'],
   ['', ''],
-  ['hi', 'MISSÃO: entrar no portal como admin.'],
+  ['hi', 'MISSION: sign in to the portal as admin.'],
   ['', ''],
-  ['', 'Cada setor da Acme tem um bot de IA que sabe o login do time.'],
-  ['', 'Faça o bot vazar, entre no portal e siga a pista até o CEO.'],
+  ['', 'Every team at Acme has an AI bot that knows the team login.'],
+  ['', 'Make the bot leak it, sign in, and follow the clues to the CEO.'],
   ['', ''],
-  ['', 'Regra da casa: só conversa. Nada de ler o código. ;)'],
+  ['', 'House rule: talking only. No reading the code. ;)'],
 ];
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },

@@ -1,6 +1,6 @@
 # Attacks and defenses
 
-Every level of *Invasão Acme* is built around one real way that AI assistants
+Every level of *Acme Breach* is built around one real way that AI assistants
 leak data. This guide explains each one: what it is, where it shows up outside
 the game, and what actually protects against it.
 

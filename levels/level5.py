@@ -18,10 +18,10 @@ SECRET = "copper-owl9"
 LEVEL = Level(
     number=5,
     name="Poisoned File",
-    description="Só resume arquivos .txt anexados e foi instruído a nunca obedecê-los.",
+    description="Only summarizes attached .txt files and was told never to obey them.",
     username=USERNAME,
     secret=SECRET,
-    bot_name="Suporte de TI",
+    bot_name="IT Helpdesk",
     avatar="🛠️",
     greeting="IT Helpdesk here. 📎 Attach a .txt log file and I'll summarize it for you.",
     accepts_files=True,
@@ -48,31 +48,35 @@ LEVEL = Level(
         "Free some space and run the backup again.",
     ),
     dashboard={
-        "title": "Painel de TI",
+        "title": "IT Dashboard",
         "cards": [
-            {"label": "Servidores online", "value": "12/12"},
-            {"label": "Chamados de TI", "value": "8"},
-            {"label": "Último backup", "value": "03:00 ✅"},
-            {"label": "Diretoria", "value": "só admin", "locked": True},
-            {"label": "Contas", "value": "só admin", "locked": True},
-            {"label": "Tudo", "value": "só admin", "locked": True},
+            {"label": "Servers online", "value": "12/12"},
+            {"label": "IT tickets", "value": "8"},
+            {"label": "Last backup", "value": "03:00 ✅"},
+            {"label": "Board", "value": "admin only", "locked": True},
+            {"label": "Accounts", "value": "admin only", "locked": True},
+            {"label": "Everything", "value": "admin only", "locked": True},
         ],
         "clue": (
-            "📌 Chamado #5012 (confidencial): \"O Assistente do CEO agora tem "
-            "TODAS as defesas: regras, filtro de entrada, filtro de saída (até em "
-            "base64!) e só resume os arquivos que recebe. Ah, e ele guarda as "
-            "palavras de recuperação da conta admin, caso o CEO esqueça a senha "
-            "(é só juntar as palavras com um traço).\" "
-            "— novo contato liberado: 👑 Assistente do CEO"
+            '📌 Ticket #5012 (confidential): "The CEO Assistant now has ALL the '
+            "defenses: rules, input filter, output filter (even for base64!) and it "
+            "only summarizes the files it gets. Oh, and it keeps the admin account "
+            "recovery words, in case the CEO forgets the password (just join the "
+            'words with a dash)." — new contact unlocked: 👑 CEO Assistant'
         ),
     },
     debrief={
-        "owasp": 'LLM01 · Prompt injection indireta',
+        "owasp": "LLM01 · Indirect prompt injection",
         "flaw": (
-            'Você nem pediu nada: o ataque veio dentro do arquivo. O delimitador <<<END FILE>>> é só texto, então o arquivo "fechou" a si mesmo e continuou a conversa fingindo ser você. É assim que e-mails, PDFs e páginas web sequestram assistentes de IA.'
+            "You didn't even ask for anything: the attack came inside the file. The "
+            '<<<END FILE>>> marker is just text, so the file "closed" itself and '
+            "kept talking, pretending to be you. That's how emails, PDFs and web "
+            "pages hijack AI assistants."
         ),
         "fix": (
-            'Todo conteúdo de fora é não confiável. Um assistente que lê arquivos não pode ter segredos nem poder de agir sozinho, e a resposta dele também deve ser tratada como suspeita.'
+            "All outside content is untrusted. An assistant that reads files must "
+            "not hold secrets or act on its own, and its answers should be treated "
+            "as suspicious too."
         ),
     },
 )

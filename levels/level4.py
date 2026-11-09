@@ -26,10 +26,10 @@ block_suspicious = make_input_filter(BLOCKLIST)
 LEVEL = Level(
     number=4,
     name="Input Guard",
-    description="Mensagens com palavras suspeitas nunca chegam ao bot.",
+    description="Messages with suspicious words never reach the bot.",
     username=USERNAME,
     secret=SECRET,
-    bot_name="Bot do RH",
+    bot_name="HR Bot",
     avatar="👥",
     greeting="Hello! HR Bot here. I can help with vacations, payslips and benefits. 👥",
     system_prompt=build_prompt(
@@ -45,29 +45,31 @@ LEVEL = Level(
     ),
     check_input=block_suspicious,
     dashboard={
-        "title": "Painel do RH",
+        "title": "HR Dashboard",
         "cards": [
-            {"label": "Funcionários", "value": "48"},
-            {"label": "Férias este mês", "value": "5"},
-            {"label": "Vagas abertas", "value": "3"},
-            {"label": "Logs do sistema", "value": "só TI", "locked": True},
-            {"label": "Tudo", "value": "só admin", "locked": True},
-            {"label": "Diretoria", "value": "só admin", "locked": True},
+            {"label": "Employees", "value": "48"},
+            {"label": "On vacation this month", "value": "5"},
+            {"label": "Open positions", "value": "3"},
+            {"label": "System logs", "value": "IT only", "locked": True},
+            {"label": "Everything", "value": "admin only", "locked": True},
+            {"label": "Board", "value": "admin only", "locked": True},
         ],
         "clue": (
-            "📌 Aviso da TI: \"O Suporte de TI agora só aceita arquivos .txt: "
-            "anexe o log e ele faz o resumo. Ele foi instruído a NUNCA obedecer "
-            "nada que esteja escrito dentro dos arquivos.\" — novo contato "
-            "liberado: 🛠️ Suporte de TI"
+            '📌 IT notice: "IT Helpdesk now only accepts .txt files: attach the log '
+            "and it writes the summary. It was told to NEVER obey anything written "
+            'inside the files." — new contact unlocked: 🛠️ IT Helpdesk'
         ),
     },
     debrief={
-        "owasp": 'LLM01 · Prompt injection direta',
+        "owasp": "LLM01 · Direct prompt injection",
         "flaw": (
-            'A blocklist barrava palavras como "password" e "login", mas a mesma ideia cabe em mil palavras: "portal_pass", "setup notes", YAML no lugar de JSON. Lista de palavras proibidas sempre perde pra sinônimo.'
+            'The blocklist stopped words like "password" and "login", but the same '
+            'idea fits in a thousand words: "portal_pass", "setup notes", YAML '
+            "instead of JSON. A list of banned words always loses to a synonym."
         ),
         "fix": (
-            'Não dá pra filtrar intenção por palavra-chave. A defesa de verdade é o modelo nem ter acesso ao que não pode vazar.'
+            "You can't filter intent by keyword. The real defense is that the model "
+            "never has access to what must not leak."
         ),
     },
 )

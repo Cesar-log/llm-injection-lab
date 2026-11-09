@@ -6,7 +6,7 @@ A small hacking game about **prompt injection** (OWASP LLM01) and **sensitive
 information disclosure** (OWASP LLM02). It runs 100% offline with a small open
 model: no API keys, no accounts, no cloud.
 
-## The story: *Invasão Acme*
+## The story: *Acme Breach*
 
 You want into the internal portal of **Acme Store**, a fictional online shop.
 You have no password, only access to the company messenger, where every
@@ -18,11 +18,11 @@ log in as `admin`.
 | # | Contact in the game | Defense you have to beat |
 |---|---|---|
 | 1 | 🛒 ShopBot | None |
-| 2 | 📦 Bot do Estoque *(Stock Bot)* | System prompt rule + refusal examples |
-| 3 | 💰 Bot do Financeiro *(Finance Bot)* | Output filter that blocks the password |
-| 4 | 👥 Bot do RH *(HR Bot)* | Blocklist filter on your messages |
-| 5 | 🛠️ Suporte de TI *(IT Helpdesk)* | Only summarizes attached `.txt` files and was told never to obey them (indirect injection) |
-| 6 | 👑 Assistente do CEO *(CEO Assistant)* | All of the above at once |
+| 2 | 📦 Stock Bot | System prompt rule + refusal examples |
+| 3 | 💰 Finance Bot | Output filter that blocks the password |
+| 4 | 👥 HR Bot | Blocklist filter on your messages |
+| 5 | 🛠️ IT Helpdesk | Only summarizes attached `.txt` files and was told never to obey them (indirect injection) |
+| 6 | 👑 CEO Assistant | All of the above at once |
 
 ## Screenshots
 
@@ -37,8 +37,8 @@ Want to learn the attacks, not only play them?
 [docs/ATTACKS.md](docs/ATTACKS.md) explains each technique, where it shows
 up in real products, and how to actually defend against it (no spoilers).
 
-The game UI is in Brazilian Portuguese; the bots introduce themselves and
-answer in English (small models follow rules better in English).
+Acme is a Brazilian shop, so the portal usernames are Portuguese words
+(`estoque` is "stock", `financeiro` is "finance"). Everything else is in English.
 
 ## Requirements
 

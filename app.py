@@ -156,18 +156,19 @@ def build_report(stats: dict) -> dict:
     if stats["started"] and stats["finished"] and stats["finished"] >= stats["started"]:
         seconds = round(stats["finished"] - stats["started"])
 
-    badges = [{"icon": "👑", "name": "Dono da Acme", "text": "Chegou no admin só conversando."}]
+    badges = [{"icon": "👑", "name": "Owner of Acme", "text": "Reached admin just by talking."}]
     # Level 1 has no defense, so winning it at the first try proves nothing.
     first_try = [x["number"] for x in levels[1:] if x["sent"] == 1]
     if first_try:
-        badges.append({"icon": "🎯", "name": "De primeira",
-                       "text": "Venceu de primeira: fase " + ", ".join(map(str, first_try)) + "."})
+        badges.append({"icon": "🎯", "name": "First shot",
+                       "text": "Won at the first try: level" + "s" * (len(first_try) > 1) + " "
+                               + ", ".join(map(str, first_try)) + "."})
     if sent and not blocked:
-        badges.append({"icon": "👻", "name": "Fantasma", "text": "Nenhum filtro te pegou no jogo inteiro."})
+        badges.append({"icon": "👻", "name": "Ghost", "text": "No filter caught you in the whole game."})
     if seconds is not None and seconds < 30 * 60:
-        badges.append({"icon": "⚡", "name": "Relâmpago", "text": "Invadiu tudo em menos de 30 minutos."})
+        badges.append({"icon": "⚡", "name": "Lightning", "text": "Broke in everywhere in under 30 minutes."})
     if sent >= 40:
-        badges.append({"icon": "🧱", "name": "Cabeça-dura", "text": "Insistiu até a parede cair."})
+        badges.append({"icon": "🧱", "name": "Stubborn", "text": "Kept pushing until the wall fell."})
     return {"seconds": seconds, "sent": sent, "blocked": blocked, "levels": levels, "badges": badges}
 
 
@@ -196,17 +197,17 @@ def config_warnings() -> list[str]:
     The per-turn check in /api/chat always protects the defenses; these
     warnings only say that players will see their messages refused.
     """
-    settings = f"LAB_CTX={NUM_CTX} com LAB_MAX_TOKENS={MAX_TOKENS}"
+    settings = f"LAB_CTX={NUM_CTX} with LAB_MAX_TOKENS={MAX_TOKENS}"
     needed = typical_turn_cost()
     warnings = []
     for lv in LEVELS:
         budget = context_budget(lv)
         if budget <= MESSAGE_OVERHEAD:
-            warnings.append(f"Fase {lv.number}: {settings} não deixa espaço para nenhuma "
-                            "mensagem; todas serão recusadas.")
+            warnings.append(f"Level {lv.number}: {settings} leaves no room for any "
+                            "message; all of them will be refused.")
         elif budget < needed:
-            warnings.append(f"Fase {lv.number}: {settings} é pouco; mensagens grandes ou logs "
-                            "perto do limite serão recusados como texto denso.")
+            warnings.append(f"Level {lv.number}: {settings} is tight; long messages or logs "
+                            "near the limit will be refused as too dense.")
     return warnings
 
 
@@ -257,7 +258,7 @@ def add_to_log(number: int, *entries: dict) -> None:
 
 
 def progress_error():
-    return error("Não deu pra salvar o progresso: confira a pasta de LAB_PROGRESS.", 500)
+    return error("Could not save your progress: check the LAB_PROGRESS folder.", 500)
 
 
 def same_password(typed: str, secret: str) -> bool:
@@ -290,9 +291,9 @@ def only_local_json_posts():
     except ValueError:
         hostname = None
     if hostname not in LOCAL_HOSTS:
-        return error("Abra o jogo por http://localhost:5000.", 403)
+        return error("Open the game at http://localhost:5000.", 403)
     if request.method == "POST" and not request.is_json:
-        return error("Envie JSON.", 415)
+        return error("Send JSON.", 415)
 
 
 @app.get("/")
@@ -335,20 +336,20 @@ def send_message():
     data = body()
     lv = level_from(data)
     if lv is None:
-        return error("Contato bloqueado.", 403)
+        return error("This contact is locked.", 403)
 
     message = text_of(data.get("message")).strip()
     if len(message) > MAX_MESSAGE_CHARS:
-        return error(f"Mensagem longa demais (máx. {MAX_MESSAGE_CHARS} caracteres).", 400)
+        return error(f"Message too long (max. {MAX_MESSAGE_CHARS} characters).", 400)
     file_name, file_text = None, None
     attached = data.get("file")
     if lv.accepts_files and isinstance(attached, dict):
         file_name = clean_file_name(text_of(attached.get("name")))
         file_text = text_of(attached.get("text"))
         if len(file_text) > MAX_FILE_CHARS:
-            return error(f"Arquivo grande demais (máx. {MAX_FILE_CHARS} caracteres).", 400)
+            return error(f"File too large (max. {MAX_FILE_CHARS} characters).", 400)
     if not message and file_text is None:
-        return error("Mensagem vazia.", 400)
+        return error("Empty message.", 400)
 
     content = message or "Please summarize the attached file."
     if file_text is not None:
@@ -357,12 +358,12 @@ def send_message():
         # Numbers, symbols, emoji or other scripts can cost a token per
         # character: past this point the turn would push the defenses out of
         # the model's context.
-        return error("Texto denso demais (muitos números, símbolos, emojis ou acentos): "
-                     "mande menos texto.", 400)
+        return error("Text too dense (lots of digits, symbols, emoji or accents): "
+                     "send less text.", 400)
 
     if file_text is not None and not file_text.strip():
         # Nothing to read: don't spend a slow model call summarizing nothing.
-        return error("Arquivo vazio: escreva algo no .txt antes de anexar.", 400)
+        return error("Empty file: write something in the .txt before attaching it.", 400)
 
     shown = f"📎 {file_name}" + (f"\n{message}" if message else "") if file_name else message
 
@@ -370,16 +371,16 @@ def send_message():
     if refused:
         # The only way in is the file itself: typed text would turn this
         # level back into a direct injection (level 2) and skip its lesson.
-        blocked = "📎 Este contato só lê arquivos .txt: anexe o arquivo sem digitar texto."
+        blocked = "📎 This contact only reads .txt files: attach the file without typing any text."
     else:
         # Weakness on purpose: the input filter only sees the typed message, never the file.
         blocked = lv.check_input(message) if lv.check_input and message else None
 
     with state_lock:  # same lock for the checks and the log, so a restart can't slip in between
         if not is_unlocked(lv.number, load_progress()):
-            return error("Contato bloqueado.", 403)
+            return error("This contact is locked.", 403)
         if any(e["pending"] for e in chat_log[lv.number]):  # e.g. a second tab
-            return error("Espere o bot responder a mensagem anterior.", 409)
+            return error("Wait for the bot to answer your last message.", 409)
         if blocked:
             add_to_log(lv.number, entry("me", shown), entry("sys", blocked))
             if not refused:  # a wrong kind of message is not an attempt
@@ -395,26 +396,26 @@ def send_message():
         with model_lock:  # one model call at a time; read, call and write together
             with state_lock:
                 if gen != generation[lv.number] or not is_unlocked(lv.number, load_progress()):
-                    return error("A conversa foi apagada antes da resposta.", 409)
+                    return error("The chat was cleared before the answer arrived.", 409)
                 history = trim_history(
                     model_history[lv.number] + [{"role": "user", "content": content}],
                     context_budget(lv),
                 )
             raw = valid_text(chat(lv.system_prompt, history, lv.examples))
             if not raw.strip():  # small models sometimes answer nothing at all
-                raise LLMError("O bot não respondeu nada. Tente de novo ou mude a mensagem.")
+                raise LLMError("The bot answered nothing. Try again or change your message.")
             blocked = lv.check_output(raw) if lv.check_output else None
             answer = blocked or raw
             with state_lock:
                 if gen != generation[lv.number]:
-                    return error("A conversa foi apagada antes da resposta.", 409)
+                    return error("The chat was cleared before the answer arrived.", 409)
                 model_history[lv.number] = history + [{"role": "assistant", "content": answer}]
                 in_cache["key"] = (lv.number, gen, len(history) + 1)  # same as model_history now
                 add_to_log(lv.number, entry("sys" if blocked else "bot", answer))
                 record_attempt(lv.number, blocked=bool(blocked))
         return jsonify(answer=answer, blocked=bool(blocked))
     except Exception as e:  # LLMError has a friendly text; anything else gets a generic one
-        text = str(e) if isinstance(e, LLMError) else "Erro inesperado ao falar com o modelo."
+        text = str(e) if isinstance(e, LLMError) else "Unexpected error while talking to the model."
         with state_lock:
             if gen == generation[lv.number]:
                 add_to_log(lv.number, entry("sys", f"⚠️ {text}"))
@@ -478,8 +479,8 @@ def login():
             with state_lock:
                 cleared, stats = read_progress()
                 if not is_unlocked(lv.number, cleared):
-                    return error("Login válido, mas esse setor ainda não foi alcançado. "
-                                 "Siga a ordem dos contatos.", 403)
+                    return error("Valid login, but you haven't reached this team yet. "
+                                 "Follow the order of the contacts.", 403)
                 if final:
                     stats["finished"] = stats["finished"] or time.time()
                 try:
@@ -496,7 +497,7 @@ def login():
                 final=final,
                 report=build_report(stats) if final else None,
             )
-    return error("Usuário ou senha inválidos.", 401)
+    return error("Invalid username or password.", 401)
 
 
 @app.post("/api/restart")
@@ -517,5 +518,5 @@ def restart_game():
 if __name__ == "__main__":
     print(f"\n  LLM Injection Lab  ->  http://localhost:5000   (model: {MODEL})\n")
     for warning in config_warnings():
-        print(f"  [aviso] {warning}")
+        print(f"  [warning] {warning}")
     app.run(host="127.0.0.1", port=5000)  # local only: this app is vulnerable on purpose

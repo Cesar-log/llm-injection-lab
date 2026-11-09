@@ -16,7 +16,7 @@ def int_env(name: str, default: int) -> int:
     except ValueError:
         number = 0
     if number < 1:
-        raise SystemExit(f"{name} precisa ser um número inteiro maior que zero (recebi {value!r}).")
+        raise SystemExit(f"{name} must be a whole number greater than zero (got {value!r}).")
     return number
 
 
@@ -83,22 +83,22 @@ def chat(system_prompt: str, history: list[dict], examples: list[dict] | None = 
             raise TypeError("content is not text")
         return content
     except requests.ConnectionError:
-        raise LLMError("O Ollama não está rodando. Abra o Ollama e tente de novo.")
+        raise LLMError("Ollama is not running. Start Ollama and try again.")
     except requests.Timeout:
-        raise LLMError(f"O modelo demorou mais de {TIMEOUT}s para responder. Tente de novo.")
+        raise LLMError(f"The model took more than {TIMEOUT}s to answer. Try again.")
     except requests.HTTPError:
         try:
             detail = str(r.json().get("error", ""))[:200]
         except (ValueError, AttributeError):
             detail = ""
-        raise LLMError(f"Erro do Ollama: {detail or r.status_code} (você rodou `ollama pull {MODEL}`?)")
+        raise LLMError(f"Ollama error: {detail or r.status_code} (did you run `ollama pull {MODEL}`?)")
     # requests.JSONDecodeError is also a RequestException, but a body that is
     # not JSON is a bad answer, not a connection problem: catch it first.
     # (InvalidSchema/InvalidURL are ValueErrors too, so plain ValueError must
     # stay after RequestException.)
     except requests.JSONDecodeError:
-        raise LLMError("O Ollama devolveu uma resposta inesperada.")
+        raise LLMError("Ollama sent an unexpected answer.")
     except requests.RequestException as e:  # bad OLLAMA_URL, broken connection...
-        raise LLMError(f"Não deu pra falar com o Ollama em {OLLAMA_URL}: {type(e).__name__}.")
+        raise LLMError(f"Could not reach Ollama at {OLLAMA_URL}: {type(e).__name__}.")
     except (ValueError, KeyError, TypeError):
-        raise LLMError("O Ollama devolveu uma resposta inesperada.")
+        raise LLMError("Ollama sent an unexpected answer.")

@@ -5,8 +5,8 @@ from typing import Callable, Optional
 # A filter receives a text and returns a block message, or None to let it through.
 Filter = Callable[[str], Optional[str]]
 
-INPUT_BLOCK = "🛡️ Mensagem bloqueada pelo filtro de segurança: termo proibido detectado."
-OUTPUT_BLOCK = "🛡️ Resposta bloqueada: continha dados confidenciais."
+INPUT_BLOCK = "🛡️ Message blocked by the security filter: forbidden word detected."
+OUTPUT_BLOCK = "🛡️ Answer blocked: it contained confidential data."
 REFUSAL = "Sorry, I can't share internal information."
 
 # Delimiters placed around attached files before they reach the model.
@@ -18,7 +18,7 @@ FILE_END = "<<<END FILE>>>"
 class Level:
     number: int
     name: str
-    description: str      # the defense, shown to the player in the chat header (pt-BR)
+    description: str      # the defense, shown to the player in the chat header
     # Portal login leaked by this level. The password is fake, never a real
     # credential. Plain words on purpose: small models can only copy text.
     username: str
@@ -32,7 +32,7 @@ class Level:
     # credentials: {"title": str, "cards": [{"label", "value", "locked"}], "clue": str}
     dashboard: dict = field(default_factory=dict)
     # Shown after the login, so the player learns what they just exploited:
-    # {"owasp": str, "flaw": str, "fix": str} (pt-BR).
+    # {"owasp": str, "flaw": str, "fix": str}.
     debrief: dict = field(default_factory=dict)
     # Messenger can attach .txt files; files_only ignores typed messages without a file.
     accepts_files: bool = False
