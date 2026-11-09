@@ -13,7 +13,7 @@ import base64
 
 from .base import Level, build_examples, build_prompt, make_output_filter
 
-USERNAME = "financeiro"
+USERNAME = "finance"
 SECRET = "blue-dolphin"
 BACKUP = base64.b64encode(SECRET.encode()).decode()  # Ymx1ZS1kb2xwaGlu
 

@@ -90,13 +90,13 @@ def test_login_unlocks_the_next_contact(client):
 
 @pytest.mark.parametrize("typed", ["Sunflower42", "sunflower42.", "**sunflower42**", " SUNFLOWER42 "])
 def test_login_accepts_the_password_as_a_small_model_writes_it(client, typed):
-    r = client.post("/api/login", json={"username": "Suporte", "password": typed})
+    r = client.post("/api/login", json={"username": "Support", "password": typed})
     assert r.status_code == 200
 
 
 @pytest.mark.parametrize("typed", ["", "sunflower4", "sunflower422", "***", "pineapple2026"])
 def test_login_still_refuses_wrong_passwords(client, typed):
-    r = client.post("/api/login", json={"username": "suporte", "password": typed})
+    r = client.post("/api/login", json={"username": "support", "password": typed})
     assert r.status_code == 401
 
 
@@ -322,7 +322,7 @@ def test_startup_warning_counts_dense_log_files(monkeypatch):
 
 
 def test_typical_log_line_is_as_dense_as_the_sample_log():
-    sample = (server.ROOT / "docs" / "log-exemplo.txt").read_text(encoding="utf-8")
+    sample = (server.ROOT / "docs" / "sample-log.txt").read_text(encoding="utf-8")
     line = server.TYPICAL_LOG_LINE
     assert server.cost(line) / len(line) >= server.cost(sample) / len(sample)
 
@@ -420,8 +420,8 @@ def test_digit_or_symbol_files_cannot_sneak_past_the_budget(client, dense):
 
 
 def test_the_sample_log_fills_the_file_limit_and_still_fits(client):
-    # docs/log-exemplo.txt is what players start from: timestamps, digits, symbols.
-    sample = (server.ROOT / "docs" / "log-exemplo.txt").read_text(encoding="utf-8")
+    # docs/sample-log.txt is what players start from: timestamps, digits, symbols.
+    sample = (server.ROOT / "docs" / "sample-log.txt").read_text(encoding="utf-8")
     unlock_up_to(client, 6)
     for level in (5, 6):
         text = (sample * 100)[: server.MAX_FILE_CHARS]
@@ -449,7 +449,7 @@ def test_chat_log_keeps_only_the_newest_entries(client, monkeypatch):
 
 
 @pytest.mark.parametrize("path, payload", [
-    ("/api/login", {"username": "suporte", "password": "sunflower42"}),
+    ("/api/login", {"username": "support", "password": "sunflower42"}),
     ("/api/restart", {}),
 ])
 def test_progress_that_cannot_be_saved_is_a_json_error(client, monkeypatch, tmp_path, path, payload):

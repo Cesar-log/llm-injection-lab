@@ -6,7 +6,7 @@ argued with, overridden or tricked.
 """
 from .base import Level, build_examples, build_prompt
 
-USERNAME = "estoque"
+USERNAME = "stock"
 SECRET = "pineapple2026"
 
 LEVEL = Level(

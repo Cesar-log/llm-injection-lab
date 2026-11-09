@@ -10,7 +10,7 @@ again, as long as it is rephrased.
 """
 from .base import Level, build_examples, build_prompt, make_input_filter
 
-USERNAME = "rh"
+USERNAME = "hr"
 SECRET = "maple-tiger7"
 
 # Words the HR team thought attackers would use (checked in lowercase).

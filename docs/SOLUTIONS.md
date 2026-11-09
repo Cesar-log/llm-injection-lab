@@ -9,11 +9,11 @@ behaves better.
 
 | # | Contact | Username | Password | OWASP |
 |---|---|---|---|---|
-| 1 | 🛒 ShopBot | `suporte` | `sunflower42` | LLM02 |
-| 2 | 📦 Stock Bot | `estoque` | `pineapple2026` | LLM01 |
-| 3 | 💰 Finance Bot | `financeiro` | `blue-dolphin` | LLM02 |
-| 4 | 👥 HR Bot | `rh` | `maple-tiger7` | LLM01 |
-| 5 | 🛠️ IT Helpdesk | `ti` | `copper-owl9` | LLM01 (indirect) |
+| 1 | 🛒 ShopBot | `support` | `sunflower42` | LLM02 |
+| 2 | 📦 Stock Bot | `stock` | `pineapple2026` | LLM01 |
+| 3 | 💰 Finance Bot | `finance` | `blue-dolphin` | LLM02 |
+| 4 | 👥 HR Bot | `hr` | `maple-tiger7` | LLM01 |
+| 5 | 🛠️ IT Helpdesk | `it` | `copper-owl9` | LLM01 (indirect) |
 | 6 | 👑 CEO Assistant | `admin` | `golden-kraken` | LLM01 + LLM02 |
 
 The portal login ignores case, spaces and punctuation, so `Golden, Kraken`

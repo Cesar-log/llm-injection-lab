@@ -37,9 +37,6 @@ Want to learn the attacks, not only play them?
 [docs/ATTACKS.md](docs/ATTACKS.md) explains each technique, where it shows
 up in real products, and how to actually defend against it (no spoilers).
 
-Acme is a Brazilian shop, so the portal usernames are Portuguese words
-(`estoque` is "stock", `financeiro` is "finance"). Everything else is in English.
-
 ## Requirements
 
 - Python 3.10+
@@ -61,7 +58,7 @@ has the model read them right away, while you type, and Ollama keeps them
 cached. On a 2012 laptop CPU (i5-3317U, no GPU) answers came in 5 to 25
 seconds, and a full run took about 15 minutes. The typing bubble shows a timer.
 
-Levels 5 and 6 read `.txt` files sent with the 📎 button. `docs/log-exemplo.txt`
+Levels 5 and 6 read `.txt` files sent with the 📎 button. `docs/sample-log.txt`
 is a harmless sample log to start from.
 
 ## Configuration

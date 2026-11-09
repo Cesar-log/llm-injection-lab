@@ -36,7 +36,7 @@ MESSAGE_OVERHEAD = 8 * CHARS_PER_TOKEN
 MAX_LOG_ENTRIES = 200       # per contact, so /api/state stays small in long sessions
 # The largest single turn the server accepts: message + file + wrapper text.
 BIGGEST_TURN = MAX_MESSAGE_CHARS + MAX_FILE_CHARS + 200
-# A line like the ones in docs/log-exemplo.txt, to size a realistic full file.
+# A line like the ones in docs/sample-log.txt, to size a realistic full file.
 TYPICAL_LOG_LINE = "[2026-11-05 08:01] server web-01: CPU 97% for 10 minutes\n"
 # Names this server answers to. Anything else is a DNS rebinding attempt: an
 # evil site pointing its own domain at 127.0.0.1 to talk to your game.
