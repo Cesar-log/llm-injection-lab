@@ -52,6 +52,11 @@ First get the model (once):
 ollama pull gemma3:1b
 ```
 
+Every level was tuned and tested on Ollama 0.40.14 with `gemma3:1b`, ID
+`97558784bdc9` (see `ollama list`). Small models change between builds: if
+yours has another ID, the game warns you at startup, and the bots may need
+different wording than the solutions use.
+
 **Windows (PowerShell)** (no `py`? use `python -m venv .venv`)
 
 ```powershell

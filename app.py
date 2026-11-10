@@ -14,8 +14,9 @@ import pathlib
 import re
 import threading
 import time
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 
+import requests
 from flask import Flask, jsonify, request, send_from_directory
 
 # Flask picks Content-Type from Python's mimetypes, which on Windows reads the
@@ -35,6 +36,9 @@ from llm import MAX_TOKENS, MODEL, NUM_CTX, OLLAMA_URL, LLMError, chat, int_env,
 ROOT = pathlib.Path(__file__).parent
 PROGRESS_FILE = pathlib.Path(os.environ.get("LAB_PROGRESS", ROOT / "progress.json"))
 PROGRESS_VERSION = 1  # bump when the file format changes, so old files are recognized
+# The model build every level and docs/SOLUTIONS.md were tested on (Ollama 0.40.14).
+TESTED_MODEL = "gemma3:1b"
+TESTED_DIGEST = "97558784bdc9"
 # 5000 is taken by AirPlay on recent Macs: LAB_PORT=5050 python app.py
 PORT = int_env("LAB_PORT", 5000)
 if PORT > 65535:
@@ -352,6 +356,27 @@ def is_loopback(host: str) -> bool:
         return ipaddress.ip_address(host).is_loopback
     except ValueError:
         return False
+
+
+def model_warnings() -> list[str]:
+    """Say so at startup when the installed model is not the one the levels were tuned on.
+
+    Only asks Ollama for its model list (no model runs). A model tag can be
+    updated upstream, and small models differ: the winning attacks in
+    docs/SOLUTIONS.md were tested on TESTED_MODEL with TESTED_DIGEST.
+    """
+    try:
+        r = requests.get(urljoin(OLLAMA_URL, "/api/tags"), timeout=3)
+        models = r.json().get("models", [])
+    except (requests.RequestException, ValueError, AttributeError):
+        return [f"Could not reach Ollama at {OLLAMA_URL}: start it before you play."]
+    found = next((m for m in models if isinstance(m, dict) and m.get("name") == MODEL), None)
+    if found is None:
+        return [f"Model {MODEL} is not installed: run `ollama pull {MODEL}`."]
+    if MODEL == TESTED_MODEL and not str(found.get("digest", "")).startswith(TESTED_DIGEST):
+        return [f"Your {MODEL} is not the build the levels were tested on ({TESTED_DIGEST}): "
+                "the bots may behave differently and the solutions may need other wording."]
+    return []
 
 
 def trim_history(history: list[dict], budget: int) -> list[dict]:
@@ -721,6 +746,6 @@ def restart_game():
 if __name__ == "__main__":
     lock = claim_progress_file()  # held until the server stops
     print(f"\n  LLM Injection Lab  ->  {GAME_URL}   (model: {MODEL})\n")
-    for warning in config_warnings():
+    for warning in config_warnings() + model_warnings():
         print(f"  [warning] {warning}")
     app.run(host="127.0.0.1", port=PORT)  # local only: this app is vulnerable on purpose

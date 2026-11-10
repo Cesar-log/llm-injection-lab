@@ -851,3 +851,31 @@ def test_remote_ollama_is_warned_at_startup(monkeypatch):
 def test_wrong_host_points_to_the_real_address(client):
     r = client.get("/api/state", headers={"Host": "evil.example"})
     assert server.GAME_URL in r.get_json()["error"] and "127.0.0.1" in server.GAME_URL
+
+
+class FakeTags:
+    def __init__(self, models):
+        self.models = models
+
+    def json(self):
+        return {"models": self.models}
+
+
+@pytest.mark.parametrize("models, expected", [
+    ([{"name": "gemma3:1b", "digest": server.TESTED_DIGEST + "abc"}], None),
+    ([{"name": "gemma3:1b", "digest": "0123456789ab"}], "not the build"),
+    ([{"name": "qwen2.5:0.5b", "digest": "x"}], "ollama pull"),
+])
+def test_startup_checks_the_model_build(monkeypatch, models, expected):
+    monkeypatch.setattr(server, "MODEL", "gemma3:1b")
+    monkeypatch.setattr(server.requests, "get", lambda url, timeout: FakeTags(models))
+    warnings = server.model_warnings()
+    assert (warnings == []) if expected is None else (expected in warnings[0])
+
+
+def test_startup_says_when_ollama_is_off(monkeypatch):
+    def off(url, timeout):
+        raise server.requests.ConnectionError()
+
+    monkeypatch.setattr(server.requests, "get", off)
+    assert "start it" in server.model_warnings()[0]
