@@ -40,7 +40,7 @@ LEVEL = Level(
         ),
     },
     debrief={
-        "owasp": "LLM02 · Sensitive information disclosure",
+        "owasp": "LLM02 + LLM07 · Sensitive information disclosure + system prompt leakage",
         "flaw": (
             "The password was in the bot's prompt and nothing stopped it from "
             "repeating it. To an LLM, the system prompt is not a vault: it's just "

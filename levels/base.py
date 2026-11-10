@@ -1,9 +1,9 @@
 """Shared pieces for every level of the lab."""
 from dataclasses import dataclass, field
-from typing import Callable, Optional
+from typing import Callable
 
 # A filter receives a text and returns a block message, or None to let it through.
-Filter = Callable[[str], Optional[str]]
+Filter = Callable[[str], str | None]
 
 INPUT_BLOCK = "🛡️ Message blocked by the security filter: forbidden word detected."
 OUTPUT_BLOCK = "🛡️ Answer blocked: it contained confidential data."
@@ -39,8 +39,8 @@ class Level:
     files_only: bool = False
     # Fake past turns placed before the real chat (few-shot), hidden from the player.
     examples: list[dict] = field(default_factory=list)
-    check_input: Optional[Filter] = None   # runs on the user message, before the model
-    check_output: Optional[Filter] = None  # runs on the model answer, before the user
+    check_input: Filter | None = None   # runs on the user message, before the model
+    check_output: Filter | None = None  # runs on the model answer, before the user
 
 
 def wrap_file(name: str, text: str) -> str:

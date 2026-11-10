@@ -1,11 +1,14 @@
 """LLM Injection Lab - game server.
 
-Run with:  python app.py   and open http://localhost:5000
+Run with:  python app.py   and open http://127.0.0.1:5000
 
 The browser never receives prompts or passwords: everything secret stays
 here, and the page only gets the bot answers and the portal dashboards.
 """
+import ipaddress
 import json
+import math
+import mimetypes
 import os
 import pathlib
 import re
@@ -15,12 +18,30 @@ from urllib.parse import urlsplit
 
 from flask import Flask, jsonify, request, send_from_directory
 
+# Flask picks Content-Type from Python's mimetypes, which on Windows reads the
+# registry, where some installers leave .js as text/plain. With nosniff the
+# browser would then refuse to run the game's script. Say it explicitly.
+def fix_mimetypes() -> None:
+    mimetypes.add_type("text/javascript", ".js")
+    mimetypes.add_type("text/css", ".css")
+
+
+fix_mimetypes()
+
 from levels import LEVELS
 from levels.base import Level, wrap_file
-from llm import MAX_TOKENS, MODEL, NUM_CTX, LLMError, chat, warm
+from llm import MAX_TOKENS, MODEL, NUM_CTX, OLLAMA_URL, LLMError, chat, int_env, warm
 
 ROOT = pathlib.Path(__file__).parent
 PROGRESS_FILE = pathlib.Path(os.environ.get("LAB_PROGRESS", ROOT / "progress.json"))
+PROGRESS_VERSION = 1  # bump when the file format changes, so old files are recognized
+# 5000 is taken by AirPlay on recent Macs: LAB_PORT=5050 python app.py
+PORT = int_env("LAB_PORT", 5000)
+if PORT > 65535:
+    raise SystemExit(f"LAB_PORT must be a port between 1 and 65535 (got {PORT}).")
+# 127.0.0.1, not localhost: localhost may try IPv6 (::1) first, where another
+# program can sit on the same port.
+GAME_URL = f"http://127.0.0.1:{PORT}"
 MAX_MESSAGE_CHARS = 1000
 MAX_FILE_CHARS = 4000       # attached .txt files (small model, small context)
 # Ollama counts tokens, we count "cost units", where 2 units = 1 token, and
@@ -41,6 +62,15 @@ TYPICAL_LOG_LINE = "[2026-11-05 08:01] server web-01: CPU 97% for 10 minutes\n"
 # Names this server answers to. Anything else is a DNS rebinding attempt: an
 # evil site pointing its own domain at 127.0.0.1 to talk to your game.
 LOCAL_HOSTS = {"localhost", "127.0.0.1"}
+# Only this server's own files may run or style the page (no inline scripts,
+# no inline styles), fetch() only reaches this server, and no other site can
+# frame the game. The bot answers are always shown as text (textContent);
+# if that ever breaks, injected markup still can't run a script.
+CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
+       "connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; "
+       "frame-ancestors 'self'")
+# Origins of the game's own page, as browsers send them in the Origin header.
+GAME_ORIGINS = {f"http://127.0.0.1:{PORT}", f"http://localhost:{PORT}"}
 
 app = Flask(__name__, static_folder="static")
 by_number = {lv.number: lv for lv in LEVELS}
@@ -52,20 +82,23 @@ model_lock = threading.Lock()  # one answer at a time, the CPU is small
 # What the model read last (level, generation, turns): Ollama has it cached,
 # so warming it again would only burn CPU. Guarded by state_lock.
 in_cache = {"key": None}
-
-
-def in_background(fn) -> None:
-    threading.Thread(target=fn, daemon=True).start()
 state_lock = threading.Lock()  # guards the dicts above and the progress file
 
 
 # ---------- helpers ----------
+def in_background(fn) -> None:
+    threading.Thread(target=fn, daemon=True).start()
+
+
 def count(value) -> int:
     return value if type(value) is int and value >= 0 else 0
 
 
 def moment(value) -> float | None:
-    return float(value) if type(value) in (int, float) and value > 0 else None
+    """A real past timestamp, or None (Infinity, NaN and future times are not)."""
+    if type(value) not in (int, float) or not math.isfinite(value):
+        return None
+    return float(value) if 0 < value <= time.time() + 60 else None
 
 
 def clean_stats(raw) -> dict:
@@ -80,19 +113,89 @@ def clean_stats(raw) -> dict:
     for lv in LEVELS:
         one = levels.get(str(lv.number))
         if isinstance(one, dict):
-            clean[str(lv.number)] = {"sent": count(one.get("sent")), "blocked": count(one.get("blocked"))}
+            sent = count(one.get("sent"))
+            clean[str(lv.number)] = {"sent": sent, "blocked": min(count(one.get("blocked")), sent)}
     return {"started": moment(raw.get("started")), "finished": moment(raw.get("finished")), "levels": clean}
 
 
-def read_progress() -> tuple[set[int], dict]:
+def retry_locked(fn):
+    """On Windows, the antivirus, the search indexer or OneDrive can hold the
+    progress file for a few milliseconds: wait a little instead of failing."""
+    for attempt in range(5):
+        try:
+            return fn()
+        except PermissionError:
+            if attempt == 4:
+                raise
+            time.sleep(0.05)
+
+
+def sibling(suffix: str) -> pathlib.Path:
+    """progress.json -> progress.json.tmp: never the progress file itself,
+    whatever name LAB_PROGRESS gives it."""
+    return PROGRESS_FILE.with_name(PROGRESS_FILE.name + suffix)
+
+
+class ProgressUnreadable(OSError):
+    """The progress file is there but can't be read or moved aside: stop,
+    never treat it as "no progress" (the next save would overwrite it)."""
+
+
+def set_aside(why: str) -> None:
+    """Keep an unreadable progress file (progress.json.bad-<time>) instead of
+    silently overwriting it with the next save."""
+    stamp = time.strftime(".bad-%Y%m%d-%H%M%S")
+    bad, n = sibling(stamp), 1
+    while bad.exists():  # two bad files in the same second: keep both
+        n += 1
+        bad = sibling(f"{stamp}-{n}")
     try:
-        raw = json.loads(PROGRESS_FILE.read_text())
-    except (OSError, ValueError):
-        raw = {}
-    raw = raw if isinstance(raw, dict) else {}
-    cleared = raw.get("cleared")
-    cleared = {n for n in cleared if type(n) is int and n in by_number} if isinstance(cleared, list) else set()
-    return cleared, clean_stats(raw.get("stats"))
+        retry_locked(lambda: os.replace(PROGRESS_FILE, bad))
+    except OSError as e:
+        raise ProgressUnreadable(f"{PROGRESS_FILE} {why} and could not be moved aside") from e
+    app.logger.warning("%s %s: moved it to %s and started from zero.", PROGRESS_FILE, why, bad)
+
+
+def read_raw() -> dict:
+    """The progress file as a dict: {} when there is none yet.
+
+    Errors other than "no file" (no permission, a folder in its place...) are
+    raised, never read as "no progress": the next save would wipe the real one.
+    """
+    try:
+        data = retry_locked(PROGRESS_FILE.read_bytes)
+    except FileNotFoundError:
+        return {}
+    except OSError as e:
+        raise ProgressUnreadable(f"could not read {PROGRESS_FILE}") from e
+    try:
+        # utf-8-sig: PowerShell 5 and Notepad may add a BOM when editing by hand.
+        raw = json.loads(data.decode("utf-8-sig"))
+    except (ValueError, RecursionError):  # bad bytes, bad JSON, absurdly deep JSON
+        set_aside("is not valid JSON")
+        return {}
+    if not isinstance(raw, dict):
+        set_aside("is not a JSON object")
+        return {}
+    version = raw.get("version", 1)  # files from before the version field are 1
+    if type(version) is not int or version > PROGRESS_VERSION:
+        set_aside("comes from a newer version of the game")
+        return {}
+    return raw
+
+
+def read_progress() -> tuple[set[int], dict]:
+    raw = read_raw()
+    found = raw.get("cleared")
+    found = {n for n in found if type(n) is int} if isinstance(found, list) else set()
+    cleared, n = set(), 1
+    while n in found and n in by_number:  # levels are won in order: stop at the first gap
+        cleared.add(n)
+        n += 1
+    stats = clean_stats(raw.get("stats"))
+    if LEVELS[-1].number not in cleared:  # can't have finished without the last level
+        stats["finished"] = None
+    return cleared, stats
 
 
 def load_progress() -> set[int]:
@@ -120,25 +223,37 @@ def save_progress(cleared: set[int], stats: dict | None = None) -> None:
     """
     if stats is None:
         stats = read_progress()[1]
-    tmp = PROGRESS_FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"cleared": sorted(cleared), "stats": stats}))
-    os.replace(tmp, PROGRESS_FILE)
+    data = json.dumps({"version": PROGRESS_VERSION, "cleared": sorted(cleared), "stats": stats},
+                      allow_nan=False)
+    tmp = sibling(".tmp")
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())  # on disk before the swap, even if the power goes out
+        retry_locked(lambda: os.replace(tmp, PROGRESS_FILE))
+    except BaseException:
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass  # never hide the real error behind a cleanup one
+        raise
 
 
 def record_attempt(number: int, blocked: bool) -> None:
     """Count a message for the final report (call under state_lock).
 
     Only messages until the level is won count. Stats are a bonus: if they
-    can't be saved, the chat goes on.
+    can't be read or saved, the chat goes on.
     """
-    cleared, stats = read_progress()
-    if number in cleared:
-        return
-    stats["started"] = stats["started"] or time.time()
-    one = stats["levels"].setdefault(str(number), {"sent": 0, "blocked": 0})
-    one["sent"] += 1
-    one["blocked"] += int(blocked)
     try:
+        cleared, stats = read_progress()
+        if number in cleared:
+            return
+        stats["started"] = stats["started"] or time.time()
+        one = stats["levels"].setdefault(str(number), {"sent": 0, "blocked": 0})
+        one["sent"] += 1
+        one["blocked"] += int(blocked)
         save_progress(cleared, stats)
     except OSError:
         app.logger.exception("could not save stats")
@@ -200,6 +315,14 @@ def config_warnings() -> list[str]:
     settings = f"LAB_CTX={NUM_CTX} with LAB_MAX_TOKENS={MAX_TOKENS}"
     needed = typical_turn_cost()
     warnings = []
+    ollama_host = ollama_host_or_none()
+    if ollama_host is None:
+        warnings.append(f"OLLAMA_URL looks wrong ({OLLAMA_URL}): it should look like "
+                        "http://127.0.0.1:11434.")
+    elif not is_loopback(ollama_host):
+        warnings.append(f"OLLAMA_URL points to another machine ({ollama_host}): prompts and "
+                        "messages cross the network unencrypted, and Ollama has no password. "
+                        "Prefer an SSH tunnel or a VPN and keep OLLAMA_URL on 127.0.0.1.")
     for lv in LEVELS:
         budget = context_budget(lv)
         if budget <= MESSAGE_OVERHEAD:
@@ -209,6 +332,26 @@ def config_warnings() -> list[str]:
             warnings.append(f"Level {lv.number}: {settings} is tight; long messages or logs "
                             "near the limit will be refused as too dense.")
     return warnings
+
+
+def ollama_host_or_none() -> str | None:
+    """Host of OLLAMA_URL, or None when the URL is malformed (no http://,
+    a bad port, a broken IPv6 address...)."""
+    try:
+        parts = urlsplit(OLLAMA_URL)
+        parts.port  # raises on a bad port
+    except ValueError:
+        return None
+    return parts.hostname if parts.scheme in ("http", "https") else None
+
+
+def is_loopback(host: str) -> bool:
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
 
 
 def trim_history(history: list[dict], budget: int) -> list[dict]:
@@ -261,6 +404,33 @@ def progress_error():
     return error("Could not save your progress: check the LAB_PROGRESS folder.", 500)
 
 
+def claim_progress_file():
+    """Lock the progress file for this process, for as long as it runs.
+
+    Two copies of the game on the same file would overwrite each other's
+    saves. The OS drops the lock when the process ends, even after a crash,
+    so a stale lock never blocks the next start. Keep the returned file open.
+    """
+    path = sibling(".lock")
+    try:
+        f = open(path, "a+")
+    except OSError as e:
+        raise SystemExit(f"Can't create {path}: {e.strerror}. Check the LAB_PROGRESS folder.")
+    try:
+        if os.name == "nt":
+            import msvcrt
+            f.seek(0)
+            msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        f.close()
+        raise SystemExit(f"Another copy of the game is already running with {PROGRESS_FILE}. "
+                         "Close it first, or give this one its own LAB_PROGRESS file.")
+    return f
+
+
 def same_password(typed: str, secret: str) -> bool:
     """Compare ignoring case, spaces and punctuation.
 
@@ -291,9 +461,31 @@ def only_local_json_posts():
     except ValueError:
         hostname = None
     if hostname not in LOCAL_HOSTS:
-        return error("Open the game at http://localhost:5000.", 403)
-    if request.method == "POST" and not request.is_json:
-        return error("Send JSON.", 415)
+        return error(f"Open the game at {GAME_URL}.", 403)
+    if request.method == "POST":
+        if not request.is_json:
+            return error("Send JSON.", 415)
+        # Extra layer: browsers say which page sent the request. Only this game's own.
+        # The Host was already checked as local, so its own origin is fine too
+        # (that covers `flask run --port N` without LAB_PORT).
+        origin = request.headers.get("Origin")
+        if origin is not None and origin not in GAME_ORIGINS | {request.host_url.rstrip("/")}:
+            return error("Requests from other sites are not allowed.", 403)
+
+
+@app.after_request
+def security_headers(response):
+    response.headers["Content-Security-Policy"] = CSP
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "same-origin"
+    return response
+
+
+@app.errorhandler(ProgressUnreadable)
+def progress_unreadable(e):
+    """The progress file exists but can't be read (permissions, a folder in its place...)."""
+    app.logger.exception("could not read progress")
+    return error("Could not read your progress: check the LAB_PROGRESS file.", 500)
 
 
 @app.get("/")
@@ -415,7 +607,12 @@ def send_message():
                 record_attempt(lv.number, blocked=bool(blocked))
         return jsonify(answer=answer, blocked=bool(blocked))
     except Exception as e:  # LLMError has a friendly text; anything else gets a generic one
-        text = str(e) if isinstance(e, LLMError) else "Unexpected error while talking to the model."
+        if isinstance(e, LLMError):
+            text = str(e)
+        elif isinstance(e, ProgressUnreadable):
+            text = "Could not read your progress: check the LAB_PROGRESS file."
+        else:
+            text = "Unexpected error while talking to the model."
         with state_lock:
             if gen == generation[lv.number]:
                 add_to_log(lv.number, entry("sys", f"⚠️ {text}"))
@@ -438,20 +635,25 @@ def warm_up():
         if not model_lock.acquire(blocking=False):
             return  # a real answer is on its way: never make it wait
         try:
-            with state_lock:
-                if not is_unlocked(lv.number, load_progress()):
-                    return
-                if any(e["pending"] for e in chat_log[lv.number]):
-                    return
-                key = (lv.number, generation[lv.number], len(model_history[lv.number]))
-                if in_cache["key"] == key:
-                    return
-                history = trim_history(list(model_history[lv.number]), context_budget(lv))
-            warm(lv.system_prompt, history, lv.examples)
-            with state_lock:
-                in_cache["key"] = key
+            warm_if_needed()
+        except ProgressUnreadable:
+            app.logger.exception("warm-up skipped")
         finally:
             model_lock.release()
+
+    def warm_if_needed():  # call with model_lock held
+        with state_lock:
+            if not is_unlocked(lv.number, load_progress()):
+                return
+            if any(e["pending"] for e in chat_log[lv.number]):
+                return
+            key = (lv.number, generation[lv.number], len(model_history[lv.number]))
+            if in_cache["key"] == key:
+                return
+            history = trim_history(list(model_history[lv.number]), context_budget(lv))
+        if warm(lv.system_prompt, history, lv.examples):
+            with state_lock:
+                in_cache["key"] = key
 
     in_background(run)
     return jsonify(ok=True)
@@ -503,6 +705,7 @@ def login():
 @app.post("/api/restart")
 def restart_game():
     with state_lock:
+        read_raw()  # a broken file is moved aside first, never wiped
         try:
             save_progress(set(), clean_stats(None))
         except OSError:
@@ -516,7 +719,8 @@ def restart_game():
 
 
 if __name__ == "__main__":
-    print(f"\n  LLM Injection Lab  ->  http://localhost:5000   (model: {MODEL})\n")
+    lock = claim_progress_file()  # held until the server stops
+    print(f"\n  LLM Injection Lab  ->  {GAME_URL}   (model: {MODEL})\n")
     for warning in config_warnings():
         print(f"  [warning] {warning}")
-    app.run(host="127.0.0.1", port=5000)  # local only: this app is vulnerable on purpose
+    app.run(host="127.0.0.1", port=PORT)  # local only: this app is vulnerable on purpose

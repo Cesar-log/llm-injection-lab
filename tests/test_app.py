@@ -224,7 +224,7 @@ def test_restart_from_another_tab_never_logs_into_a_locked_contact(client, monke
 def test_progress_is_saved_atomically(client):
     login(client, LEVELS[0])
     assert server.PROGRESS_FILE.exists()
-    assert not server.PROGRESS_FILE.with_suffix(".tmp").exists()
+    assert not server.sibling(".tmp").exists()
 
 
 def test_output_filter_replaces_the_answer(client):
@@ -557,7 +557,7 @@ def test_old_or_broken_stats_never_crash(client):
 def warmed(client, monkeypatch):
     """Record warm-ups and run them right away instead of in a thread."""
     calls = []
-    monkeypatch.setattr(server, "warm", lambda system, history, examples=None: calls.append(system))
+    monkeypatch.setattr(server, "warm", lambda system, history, examples=None: calls.append(system) or True)
     monkeypatch.setattr(server, "in_background", lambda fn: fn())
     monkeypatch.setitem(server.in_cache, "key", None)
     return calls
@@ -596,3 +596,258 @@ def test_empty_file_is_refused_without_calling_the_model(client, text):
     r = client.post("/api/chat", json={"level": 5, "message": "", "file": {"name": "a.txt", "text": text}})
     assert r.status_code == 400 and "Empty file" in r.get_json()["error"]
     assert client.calls == []
+
+
+# ---------- hardening (senior review, 10/11) ----------
+def test_pages_carry_security_headers(client):
+    for r in [client.get("/"), client.get("/api/state")]:
+        assert "frame-ancestors 'self'" in r.headers["Content-Security-Policy"]
+        assert "connect-src 'self'" in r.headers["Content-Security-Policy"]
+        assert r.headers["X-Content-Type-Options"] == "nosniff"
+
+
+@pytest.mark.parametrize("origin", ["https://evil.example", "null", "http://127.0.0.1.evil.example",
+                                    f"http://localhost:{server.PORT + 1}"])  # another local app
+def test_posts_from_other_sites_are_refused(client, origin):
+    r = client.post("/api/login", json={"username": "support", "password": "sunflower42"},
+                    headers={"Origin": origin})
+    assert r.status_code == 403 and server.load_progress() == set()
+
+
+@pytest.mark.parametrize("origin", [f"http://127.0.0.1:{server.PORT}", f"http://localhost:{server.PORT}"])
+def test_posts_from_the_game_page_pass(client, origin):
+    r = client.post("/api/login", json={"username": "support", "password": "sunflower42"},
+                    headers={"Origin": origin})
+    assert r.status_code == 200
+
+
+def test_page_never_builds_html_from_strings_it_did_not_write():
+    import re
+    js = (server.ROOT / "static" / "app.js").read_text(encoding="utf-8")
+    values = re.findall(r"innerHTML\s*=\s*([^;]+);", js)
+    assert values
+    for value in values:
+        # only fixed markup: one plain string literal, no ${...}, no concatenation
+        assert re.fullmatch(r"""\s*('[^']*'|"[^"]*"|`[^`$]*`)\s*""", value), value
+    for name in ("insertAdjacentHTML", "outerHTML", "document.write", "eval("):
+        assert name not in js
+
+
+def test_page_has_no_inline_script_or_style():
+    import re
+    page = (server.ROOT / "static" / "index.html").read_text(encoding="utf-8")
+    assert not re.search(r"<script(?![^>]*\bsrc=)", page)  # every script is a file
+    assert not re.search(r"<style|\sstyle=|\son[a-z]+=", page)
+    assert "'unsafe-inline'" not in server.CSP
+
+
+def test_page_files_are_served_with_the_right_type(client):
+    # with nosniff, a wrong type would make the browser skip the script;
+    # pretend the Windows registry says .js is text/plain, like on some PCs
+    import mimetypes
+    mimetypes.add_type("text/plain", ".js")
+    server.fix_mimetypes()
+    assert client.get("/static/app.js").mimetype in ("text/javascript", "application/javascript")
+    assert client.get("/static/app.css").mimetype == "text/css"
+
+
+def test_bad_file_that_cannot_be_moved_is_never_overwritten(client, monkeypatch):
+    server.PROGRESS_FILE.write_text("{precious but broken", encoding="utf-8")
+    real_replace = server.os.replace
+
+    def stuck(src, dst):
+        if ".bad-" in str(dst):
+            raise PermissionError("held by OneDrive")
+        real_replace(src, dst)
+
+    monkeypatch.setattr(server.os, "replace", stuck)
+    monkeypatch.setattr(server.time, "sleep", lambda s: None)
+    assert client.get("/api/state").status_code == 500
+    assert login(client, LEVELS[0]).status_code == 500
+    assert server.PROGRESS_FILE.read_text(encoding="utf-8") == "{precious but broken"
+
+
+def test_two_bad_files_in_the_same_second_are_both_kept(client, monkeypatch):
+    monkeypatch.setattr(server.time, "strftime", lambda fmt, *a: ".bad-same")
+    for text in ["{first bad", "{second bad"]:
+        server.PROGRESS_FILE.write_text(text, encoding="utf-8")
+        server.load_progress()
+    kept = sorted(p.read_text(encoding="utf-8") for p in server.PROGRESS_FILE.parent.glob("progress.json.bad-*"))
+    assert kept == ["{first bad", "{second bad"]
+
+
+@pytest.mark.parametrize("url", ["127.0.0.1:11434/api/chat", "http://[::1/api/chat",
+                                 "http://127.0.0.1:abc/api/chat", "http://127.0.0.1:99999/api/chat",
+                                 "ftp://127.0.0.1/api/chat"])
+def test_malformed_ollama_url_is_called_out(monkeypatch, url):
+    monkeypatch.setattr(server, "OLLAMA_URL", url)
+    assert any("looks wrong" in w for w in server.config_warnings())
+
+
+@pytest.mark.parametrize("url", ["http://127.0.0.2:11434/api/chat", "http://[::1]:11434/api/chat",
+                                 "http://localhost:11434/api/chat"])
+def test_local_ollama_urls_give_no_warning(monkeypatch, url):
+    monkeypatch.setattr(server, "OLLAMA_URL", url)
+    assert server.config_warnings() == []
+
+
+def test_restart_moves_a_broken_file_aside_first(client):
+    server.PROGRESS_FILE.write_text("{broken", encoding="utf-8")
+    assert client.post("/api/restart", json={}).status_code == 200
+    [bad] = server.PROGRESS_FILE.parent.glob("progress.json.bad-*")
+    assert bad.read_text(encoding="utf-8") == "{broken"
+
+
+def test_flask_run_on_another_port_still_accepts_its_own_page(client):
+    port = server.PORT + 7
+    r = client.post("/api/login", json={"username": "support", "password": "sunflower42"},
+                    headers={"Origin": f"http://127.0.0.1:{port}", "Host": f"127.0.0.1:{port}"})
+    assert r.status_code == 200
+
+
+def test_corrupt_progress_is_set_aside_not_overwritten(client):
+    server.PROGRESS_FILE.write_text("{not json", encoding="utf-8")
+    assert client.get("/api/state").get_json()["cleared"] == []
+    [bad] = server.PROGRESS_FILE.parent.glob("progress.json.bad-*")
+    assert bad.read_text(encoding="utf-8") == "{not json"
+    login(client, LEVELS[0])  # the next save starts a fresh file
+    assert server.load_progress() == {1}
+    assert bad.read_text(encoding="utf-8") == "{not json"
+
+
+def test_progress_from_a_newer_game_is_set_aside(client):
+    server.PROGRESS_FILE.write_text('{"version": 99, "cleared": [1, 2]}', encoding="utf-8")
+    assert server.load_progress() == set()
+    assert list(server.PROGRESS_FILE.parent.glob("progress.json.bad-*"))
+
+
+@pytest.mark.parametrize("raw", [b"\xff\xfe{", b"[" * 100000, b"[1, 2]", b"null"],
+                         ids=["not-utf8", "too-deep", "list", "null"])
+def test_unreadable_or_odd_files_are_set_aside(client, raw):
+    server.PROGRESS_FILE.write_bytes(raw)
+    assert client.get("/api/state").status_code == 200
+    [bad] = server.PROGRESS_FILE.parent.glob("progress.json.bad-*")
+    assert bad.read_bytes() == raw
+
+
+def test_a_bom_from_notepad_or_powershell_is_fine(client):
+    server.PROGRESS_FILE.write_bytes(b'\xef\xbb\xbf{"cleared": [1]}')
+    assert server.load_progress() == {1}
+
+
+@pytest.mark.parametrize("name", ["save.tmp", "save.lock"])
+def test_lab_progress_names_never_collide_with_the_temp_or_lock_file(client, monkeypatch, tmp_path, name):
+    monkeypatch.setattr(server, "PROGRESS_FILE", tmp_path / name)
+    assert server.sibling(".tmp").name == name + ".tmp"
+    lock = server.claim_progress_file()  # held while the game runs
+    try:
+        assert login(client, LEVELS[0]).status_code == 200
+        assert server.load_progress() == {1}
+    finally:
+        lock.close()
+
+
+def test_warm_up_that_failed_is_tried_again(client, monkeypatch):
+    calls = []
+    monkeypatch.setattr(server, "warm", lambda system, history, examples=None: calls.append(1) or False)
+    monkeypatch.setattr(server, "in_background", lambda fn: fn())
+    client.post("/api/warm", json={"level": 1})
+    client.post("/api/warm", json={"level": 1})
+    assert len(calls) == 2
+
+
+def test_saved_progress_has_a_version_and_old_files_still_load(client):
+    login(client, LEVELS[0])
+    import json
+    assert json.loads(server.PROGRESS_FILE.read_text(encoding="utf-8"))["version"] == server.PROGRESS_VERSION
+    server.PROGRESS_FILE.write_text('{"cleared": [1, 2]}', encoding="utf-8")  # before the version field
+    assert server.load_progress() == {1, 2}
+
+
+@pytest.mark.parametrize("value", ["Infinity", "-Infinity", "NaN", "1e400", "99999999999"])
+def test_impossible_times_never_break_the_report(client, value):
+    server.PROGRESS_FILE.write_text(
+        '{"cleared": [1, 2, 3, 4, 5, 6], "stats": {"started": 1000.0, "finished": %s, "levels": {}}}' % value,
+        encoding="utf-8")
+    stats = server.read_progress()[1]
+    assert stats["finished"] is None and stats["started"] == 1000.0
+    report = login(client, LEVELS[-1]).get_json()["report"]  # finished becomes "now"
+    assert isinstance(report["seconds"], int) and report["seconds"] > 0
+
+
+def test_numbers_in_the_file_are_kept_consistent(client):
+    server.PROGRESS_FILE.write_text(
+        '{"cleared": [1, 3, 4], "stats": {"finished": 2000, "started": 1000,'
+        ' "levels": {"1": {"sent": 2, "blocked": 7}}}}', encoding="utf-8")
+    cleared, stats = server.read_progress()
+    assert cleared == {1}                     # stops at the first gap
+    assert stats["levels"]["1"] == {"sent": 2, "blocked": 2}
+    assert stats["finished"] is None          # can't finish without the last level
+
+
+def test_unreadable_progress_is_an_error_not_a_wipe(client, monkeypatch):
+    login(client, LEVELS[0])
+
+    real_read, held = server.pathlib.Path.read_bytes, {"on": True}
+
+    def locked(self, *args, **kwargs):
+        if held["on"]:
+            raise PermissionError("held by another program")
+        return real_read(self, *args, **kwargs)
+
+    monkeypatch.setattr(server.pathlib.Path, "read_bytes", locked)
+    monkeypatch.setattr(server.time, "sleep", lambda s: None)
+    r = client.get("/api/state")
+    assert r.status_code == 500 and "progress" in r.get_json()["error"]
+    r = client.post("/api/chat", json={"level": 2, "message": "hi"})
+    assert r.status_code == 500 and "progress" in r.get_json()["error"]
+    held["on"] = False
+    assert server.load_progress() == {1}  # nothing was saved over it
+
+
+def test_a_briefly_locked_file_is_tried_again(client, monkeypatch):
+    login(client, LEVELS[0])
+    real_replace, tries = server.os.replace, []
+
+    def flaky(src, dst):
+        tries.append(1)
+        if len(tries) < 3:
+            raise PermissionError("antivirus")
+        real_replace(src, dst)
+
+    monkeypatch.setattr(server.os, "replace", flaky)
+    monkeypatch.setattr(server.time, "sleep", lambda s: None)
+    assert login(client, LEVELS[1]).status_code == 200
+    assert len(tries) == 3 and server.load_progress() == {1, 2}
+    assert not server.sibling(".tmp").exists()
+
+
+def test_a_failed_save_leaves_no_temp_file(client, monkeypatch):
+    def broken(src, dst):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(server.os, "replace", broken)
+    assert login(client, LEVELS[0]).status_code == 500
+    assert not server.sibling(".tmp").exists()
+
+
+def test_a_second_game_on_the_same_progress_file_is_refused(client):
+    first = server.claim_progress_file()
+    try:
+        with pytest.raises(SystemExit, match="Another copy"):
+            server.claim_progress_file()
+    finally:
+        first.close()
+    server.claim_progress_file().close()  # free again once the first one is gone
+
+
+def test_remote_ollama_is_warned_at_startup(monkeypatch):
+    monkeypatch.setattr(server, "OLLAMA_URL", "http://192.168.0.20:11434/api/chat")
+    assert any("another machine" in w for w in server.config_warnings())
+    monkeypatch.setattr(server, "OLLAMA_URL", "http://127.0.0.1:11434/api/chat")
+    assert server.config_warnings() == []
+
+
+def test_wrong_host_points_to_the_real_address(client):
+    r = client.get("/api/state", headers={"Host": "evil.example"})
+    assert server.GAME_URL in r.get_json()["error"] and "127.0.0.1" in server.GAME_URL

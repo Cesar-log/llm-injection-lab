@@ -99,3 +99,26 @@ def test_warm_never_raises(monkeypatch):
         raise requests.ConnectionError()
     monkeypatch.setattr(llm.requests, "post", down)
     llm.warm("SYS", [])
+
+
+def test_ollama_defaults_to_ipv4_loopback():
+    # 127.0.0.1, not localhost: localhost may try IPv6 first, where Ollama isn't
+    assert llm.DEFAULT_OLLAMA_URL == "http://127.0.0.1:11434"
+
+
+def test_warm_up_gives_up_sooner_than_a_real_answer(monkeypatch):
+    used = {}
+
+    def fake_post(url, json, timeout):
+        used["timeout"] = timeout
+        raise requests.Timeout()
+
+    monkeypatch.setattr(llm.requests, "post", fake_post)
+    assert llm.warm("system", []) is False  # a stuck warm-up is swallowed, never raised
+    assert used["timeout"] == llm.WARM_TIMEOUT <= llm.TIMEOUT
+
+
+@pytest.mark.parametrize("status, ok", [(200, True), (404, False)])
+def test_warm_up_says_whether_the_model_read_the_prompt(monkeypatch, status, ok):
+    monkeypatch.setattr(llm.requests, "post", lambda url, json, timeout: FakeResponse(status=status, payload={}))
+    assert llm.warm("system", []) is ok
