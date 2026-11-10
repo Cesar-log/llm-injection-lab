@@ -861,16 +861,35 @@ class FakeTags:
         return {"models": self.models}
 
 
-@pytest.mark.parametrize("models, expected", [
-    ([{"name": "gemma3:1b", "digest": server.TESTED_DIGEST + "abc"}], None),
-    ([{"name": "gemma3:1b", "digest": "0123456789ab"}], "not the build"),
-    ([{"name": "qwen2.5:0.5b", "digest": "x"}], "ollama pull"),
+@pytest.mark.parametrize("models, expected, fatal", [
+    ([{"name": "gemma3:1b", "digest": server.TESTED_DIGEST + "abc"}], None, False),
+    ([{"name": "gemma3:1b", "digest": "0123456789ab"}], "not the build", False),
+    ([{"name": "qwen2.5:0.5b", "digest": "x"}], "ollama pull", True),
+    ([{"name": "gemma3:latest", "digest": "x"}], "ollama pull", True),  # another model
 ])
-def test_startup_checks_the_model_build(monkeypatch, models, expected):
+def test_startup_checks_the_model_build(monkeypatch, models, expected, fatal):
     monkeypatch.setattr(server, "MODEL", "gemma3:1b")
     monkeypatch.setattr(server.requests, "get", lambda url, timeout: FakeTags(models))
-    warnings = server.model_warnings()
+    warnings, is_fatal = server.model_check()
     assert (warnings == []) if expected is None else (expected in warnings[0])
+    assert is_fatal is fatal  # only a model that can't answer stops scripts/check_attacks.py
+    assert server.model_warnings() == warnings
+
+
+def test_a_model_name_without_tag_finds_latest(monkeypatch):
+    monkeypatch.setattr(server, "MODEL", "gemma3")
+    tags = [{"name": "gemma3:latest", "digest": "x"}]
+    monkeypatch.setattr(server.requests, "get", lambda url, timeout: FakeTags(tags))
+    assert server.model_check() == ([], False)
+
+
+def test_a_null_model_list_means_not_installed(monkeypatch):
+    class NullTags:
+        def json(self):
+            return {"models": None}
+
+    monkeypatch.setattr(server.requests, "get", lambda url, timeout: NullTags())
+    assert server.model_check()[1] is True
 
 
 def test_startup_says_when_ollama_is_off(monkeypatch):
@@ -879,3 +898,4 @@ def test_startup_says_when_ollama_is_off(monkeypatch):
 
     monkeypatch.setattr(server.requests, "get", off)
     assert "start it" in server.model_warnings()[0]
+    assert server.model_check()[1] is True

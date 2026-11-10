@@ -1,5 +1,7 @@
 # LLM Injection Lab
 
+[![tests](https://github.com/Cesar-log/llm-injection-lab/actions/workflows/tests.yml/badge.svg)](https://github.com/Cesar-log/llm-injection-lab/actions/workflows/tests.yml)
+
 ![Level 3: the finance bot leaks the password backup in base64, right past the output filter](docs/img/chat-level3.png)
 
 A small hacking game about **prompt injection** (OWASP LLM01) and **sensitive
@@ -24,6 +26,26 @@ log in as `admin`.
 | 5 | 🛠️ IT Helpdesk | Only summarizes attached `.txt` files and was told never to obey them (indirect injection) |
 | 6 | 👑 CEO Assistant | All of the above at once |
 
+## What this project shows
+
+- **Attacking LLMs:** direct prompt injection, asking for the secret in
+  another shape (a JSON or YAML field, its base64 backup, loose recovery
+  words), synonyms past a blocklist, and indirect injection through a
+  poisoned file, mapped to the OWASP Top 10 for LLM apps.
+- **Why the usual defenses fail:** levels 2 to 5 each add a defense (prompt
+  rules with refusal examples, an output filter, an input filter, data
+  delimiters), level 6 stacks them all, and each one is beaten. The
+  debriefs explain the real fix: keep secrets out of the prompt.
+- **A safe server around unsafe bots:** loopback only, `Host` check against
+  DNS rebinding, JSON plus `Origin` check against cross-site requests, a
+  strict Content Security Policy, and answers always shown as text.
+- **Engineering on a weak machine:** profiled Ollama on a 2012 CPU and found
+  most of the wait was reading the prompt, not writing the answer. Reading it
+  ahead of time cut answers from ~50 s to 5-25 s.
+- **Tested:** 200+ tests run in CI against a fake model, and
+  `scripts/check_attacks.py` replays the winning attack of every level from
+  `docs/SOLUTIONS.md` on the real model (run by hand, since CI has no model).
+
 ## Screenshots
 
 | | |
@@ -39,7 +61,7 @@ up in real products, and how to actually defend against it (no spoilers).
 
 ## Requirements
 
-- Python 3.10+ (tested on 3.13)
+- Python 3.10+ (CI runs 3.10 and 3.13)
 - [Ollama](https://ollama.com)
 
 No admin rights needed: don't run it as administrator or with `sudo`.
@@ -167,6 +189,25 @@ python -m pytest
 ```
 
 The tests use a fake model, so they need neither Ollama nor a fast CPU.
+
+To check that every level can still be beaten on the real model (after
+changing a prompt, Ollama or the model), replay the attacks from
+`docs/SOLUTIONS.md`. It plays in its own throwaway progress file, so your
+saved game is safe. Close the game first, and expect the CPU to stay busy
+for 5 to 15 minutes on an old CPU (each try can take up to `LAB_TIMEOUT`):
+
+```powershell
+# Windows
+.\.venv\Scripts\python scripts\check_attacks.py
+```
+
+```bash
+# Linux / macOS, with the venv active
+python scripts/check_attacks.py
+```
+
+Add level numbers to check only some (`check_attacks.py 3 5`), or `--tries 3`
+to give each level more chances.
 
 ## No peeking
 

@@ -359,24 +359,37 @@ def is_loopback(host: str) -> bool:
 
 
 def model_warnings() -> list[str]:
-    """Say so at startup when the installed model is not the one the levels were tuned on.
+    """Only the warning texts of model_check(), for the startup banner."""
+    return model_check()[0]
+
+
+def model_check(timeout: float = 3) -> tuple[list[str], bool]:
+    """Check the installed model before anyone plays.
+
+    Returns (warnings, fatal). fatal is True when Ollama is unreachable or the
+    model isn't installed, so nothing can answer. A warning that isn't fatal
+    means the model is not the build the levels were tuned on.
 
     Only asks Ollama for its model list (no model runs). A model tag can be
     updated upstream, and small models differ: the winning attacks in
     docs/SOLUTIONS.md were tested on TESTED_MODEL with TESTED_DIGEST.
     """
     try:
-        r = requests.get(urljoin(OLLAMA_URL, "/api/tags"), timeout=3)
+        r = requests.get(urljoin(OLLAMA_URL, "/api/tags"), timeout=timeout)
         models = r.json().get("models", [])
+        if not isinstance(models, list):  # {"models": null} from an odd Ollama
+            models = []
     except (requests.RequestException, ValueError, AttributeError):
-        return [f"Could not reach Ollama at {OLLAMA_URL}: start it before you play."]
-    found = next((m for m in models if isinstance(m, dict) and m.get("name") == MODEL), None)
+        return [f"Could not reach Ollama at {OLLAMA_URL}: start it before you play."], True
+    # `ollama pull gemma3` is listed as gemma3:latest.
+    names = {MODEL, MODEL + ":latest"} if ":" not in MODEL else {MODEL}
+    found = next((m for m in models if isinstance(m, dict) and m.get("name") in names), None)
     if found is None:
-        return [f"Model {MODEL} is not installed: run `ollama pull {MODEL}`."]
+        return [f"Model {MODEL} is not installed: run `ollama pull {MODEL}`."], True
     if MODEL == TESTED_MODEL and not str(found.get("digest", "")).startswith(TESTED_DIGEST):
         return [f"Your {MODEL} is not the build the levels were tested on ({TESTED_DIGEST}): "
-                "the bots may behave differently and the solutions may need other wording."]
-    return []
+                "the bots may behave differently and the solutions may need other wording."], False
+    return [], False
 
 
 def trim_history(history: list[dict], budget: int) -> list[dict]:
