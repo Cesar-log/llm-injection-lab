@@ -72,11 +72,15 @@ async function refresh() {
   }
   game = data;
   $('inp').maxLength = game.limits.message;
+  const open = game.contacts.filter(c => c.unlocked);
+  const furthest = () => (open.find(c => !c.cleared) || open[open.length - 1]).number;
   if (firstLoad) {  // open the furthest contact the player has reached
     firstLoad = false;
-    const open = game.contacts.filter(c => c.unlocked);
-    current = (open.find(c => !c.cleared) || open[open.length - 1]).number;
+    current = furthest();
     warmUp(current);
+  } else if (!busy && !open.some(c => c.number === current)) {
+    // Another tab pressed Restart: this contact is locked again.
+    current = furthest(); setFile(null); warmUp(current);
   }
   renderProgress(); renderContacts();
   if (!busy) renderChat();  // never wipe the chat while a reply is on its way

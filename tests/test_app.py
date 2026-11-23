@@ -899,3 +899,19 @@ def test_startup_says_when_ollama_is_off(monkeypatch):
     monkeypatch.setattr(server.requests, "get", off)
     assert "start it" in server.model_warnings()[0]
     assert server.model_check()[1] is True
+
+
+def test_the_model_check_keeps_the_path_of_ollama_url(monkeypatch):
+    # chat() posts to <OLLAMA_URL path>/api/chat, so an Ollama behind a proxy
+    # at /ollama must be checked at /ollama/api/tags, not at the root.
+    seen = []
+    monkeypatch.setattr(server, "OLLAMA_URL", "http://proxy.lan/ollama/api/chat")
+    monkeypatch.setattr(server.requests, "get", lambda url, timeout: seen.append(url) or FakeTags([]))
+    server.model_check()
+    assert seen == ["http://proxy.lan/ollama/api/tags"]
+
+
+def test_a_huge_request_is_refused_before_it_is_read(client):
+    r = client.post("/api/chat", json={"level": 1, "message": "x" * 100_000})
+    assert r.status_code == 413 and "too large" in r.get_json()["error"]
+    assert client.calls == []

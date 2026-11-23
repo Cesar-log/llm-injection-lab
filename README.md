@@ -159,7 +159,7 @@ Set them before starting the game: `$env:LAB_THREADS=1` in PowerShell, or
 | `LAB_WARM_TIMEOUT` | `90` | Seconds the early read of a bot's prompt may take; a message sent meanwhile waits at most this long |
 | `LAB_MAX_TOKENS` | `256` | Longest answer, so a rambling model never hits the timeout |
 | `OLLAMA_URL` | `http://127.0.0.1:11434` | Where Ollama runs |
-| `LAB_PROGRESS` | `progress.json` | Where your progress is saved (one running game per file) |
+| `LAB_PROGRESS` | `progress.json` next to `app.py` | Where your progress is saved (one running game per file; a relative path starts from the folder you run the command in) |
 
 ## Keep it on your machine
 

@@ -14,7 +14,7 @@ import pathlib
 import re
 import threading
 import time
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import urlsplit
 
 import requests
 from flask import Flask, jsonify, request, send_from_directory
@@ -77,6 +77,9 @@ CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' 
 GAME_ORIGINS = {f"http://127.0.0.1:{PORT}", f"http://localhost:{PORT}"}
 
 app = Flask(__name__, static_folder="static")
+# The biggest real request is one turn (~5 KB of text, a bit more as JSON):
+# refuse anything far bigger before reading it into memory.
+app.config["MAX_CONTENT_LENGTH"] = 64 * 1024
 by_number = {lv.number: lv for lv in LEVELS}
 model_history = {lv.number: [] for lv in LEVELS}  # what the model sees
 chat_log = {lv.number: [] for lv in LEVELS}       # what the player sees
@@ -375,7 +378,9 @@ def model_check(timeout: float = 3) -> tuple[list[str], bool]:
     docs/SOLUTIONS.md were tested on TESTED_MODEL with TESTED_DIGEST.
     """
     try:
-        r = requests.get(urljoin(OLLAMA_URL, "/api/tags"), timeout=timeout)
+        # OLLAMA_URL already ends in /api/chat (see llm.chat_url): keep any path
+        # before it, as chat() does (an Ollama behind a proxy at /ollama).
+        r = requests.get(OLLAMA_URL.removesuffix("/api/chat") + "/api/tags", timeout=timeout)
         models = r.json().get("models", [])
         if not isinstance(models, list):  # {"models": null} from an odd Ollama
             models = []
@@ -517,6 +522,11 @@ def security_headers(response):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "same-origin"
     return response
+
+
+@app.errorhandler(413)
+def too_large(e):
+    return error("Request too large.", 413)
 
 
 @app.errorhandler(ProgressUnreadable)
